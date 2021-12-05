@@ -1,4 +1,4 @@
-use memmap::{MmapMut, MmapOptions};
+
 use std::fs::File;
 use std::io::Write;
 

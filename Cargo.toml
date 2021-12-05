@@ -7,3 +7,4 @@ edition = "2021"
 
 [dependencies]
 memmap = "0.7.0"
+parking_lot = "0.11"
