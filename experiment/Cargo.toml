@@ -6,6 +6,4 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-rusqlite = { version = "0.26.1", features = ["blob", "serde_json", "time", "url", "functions", "backup"] }
-serde_json = "1.0.72"
-bson = "2.0.1"
+memmap = "0.7.0"
