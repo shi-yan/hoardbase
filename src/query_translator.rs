@@ -13,7 +13,7 @@ impl QueryTranslator {
                 if key.chars().nth(0).unwrap() == '$' {
                     match key.as_str() {
                         "$or" => {
-                            if value.is_object() {
+                            if value.is_array() {
                                 if let Ok(res) = self.or(value) {
                                     if term_count > 0 {
                                         result.push_str(" AND ");
@@ -28,7 +28,7 @@ impl QueryTranslator {
                             }
                         }
                         "$and" => {
-                            if value.is_object() {
+                            if value.is_array() {
                                 if let Ok(res) = self.and(value) {
                                     if term_count > 0 {
                                         result.push_str(" AND ");
@@ -58,7 +58,7 @@ impl QueryTranslator {
                             }
                         }
                         "$nor" => {
-                            if value.is_object() {
+                            if value.is_array() {
                                 if term_count > 0 {
                                     result.push_str(" AND ");
                                 }
@@ -302,7 +302,7 @@ impl QueryTranslator {
                 if key.chars().nth(0).unwrap() == '$' {
                     match key.as_str() {
                         "$or" => {
-                            if value.is_object() {
+                            if value.is_array() {
                                 if let Ok(res) = self.or(value) {
                                     if term_count > 0 {
                                         result.push_str(" OR ");
@@ -317,7 +317,7 @@ impl QueryTranslator {
                             }
                         }
                         "$and" => {
-                            if value.is_object() {
+                            if value.is_array() {
                                 if let Ok(res) = self.and(value) {
                                     if term_count > 0 {
                                         result.push_str(" OR ");
@@ -347,7 +347,7 @@ impl QueryTranslator {
                             }
                         }
                         "$nor" => {
-                            if value.is_object() {
+                            if value.is_array() {
                                 if term_count > 0 {
                                     result.push_str(" OR ");
                                 }
@@ -415,7 +415,7 @@ impl QueryTranslator {
                 if key.chars().nth(0).unwrap() == '$' {
                     match key.as_str() {
                         "$or" => {
-                            if value.is_object() {
+                            if value.is_array() {
                                 if let Ok(res) = self.or(value) {
                                     if term_count > 0 {
                                         result.push_str(" AND ");
@@ -430,7 +430,7 @@ impl QueryTranslator {
                             }
                         }
                         "$and" => {
-                            if value.is_object() {
+                            if value.is_array() {
                                 if let Ok(res) = self.and(value) {
                                     if term_count > 0 {
                                         result.push_str(" AND ");
@@ -460,7 +460,7 @@ impl QueryTranslator {
                             }
                         }
                         "$nor" => {
-                            if value.is_object() {
+                            if value.is_array() {
                                 if term_count > 0 {
                                     result.push_str(" AND ");
                                 }
@@ -522,7 +522,6 @@ impl QueryTranslator {
 
     fn not(&self, value: &serde_json::Value) -> Result<String, String> {
         let mut result = String::new();
-        let mut term_count = 0;
         if let Some(value_doc) = value.as_object() {
             for (key, value) in value_doc.iter() {
                 if key.chars().nth(0).unwrap() == '$' {
@@ -531,7 +530,6 @@ impl QueryTranslator {
                             if value.is_object() {
                                 if let Ok(res) = self.or(value) {
                                     result.push_str(&format!("json_field('{}', raw) IS NOT ({})", key, &res));
-                                    term_count += 1;
                                 } else {
                                     return Err(format!("Error in $or: {}", value));
                                 }
@@ -543,7 +541,6 @@ impl QueryTranslator {
                             if value.is_object() {
                                 if let Ok(res) = self.and(value) {
                                     result.push_str(&format!("json_field('{}', raw) IS NOT ({})", key, &res));
-                                    term_count += 1;
                                 } else {
                                     return Err(format!("Error in $and: {}", value));
                                 }
@@ -555,7 +552,6 @@ impl QueryTranslator {
                             if value.is_object() {
                                 if let Ok(res) = self.not(value) {
                                     result.push_str(&format!("json_field('{}', raw) IS NOT ({})", key, &res));
-                                    term_count += 1;
                                 } else {
                                     return Err(format!("Error in $not: {}", value));
                                 }
@@ -576,7 +572,6 @@ impl QueryTranslator {
                                 }
 
                                 result.push_str(&format!("( json_field('{}', raw) IN {})", key, &in_values));
-                                term_count += 1;
                             } else {
                                 return Err(format!("Error in $nor: {}", value));
                             }
@@ -589,21 +584,19 @@ impl QueryTranslator {
                     if value.is_object() {
                         if let Ok(res) = self.nested(key, value) {
                             result.push_str(&format!("json_field('{}', raw) IS NOT ({})", key, &res));
-                            term_count += 1;
                         } else {
                             return Err(format!("Error in nested query: {}", value));
                         }
                     } else if value.is_array() {
                     } else if value.is_string() || value.is_number() || value.is_boolean() || value.is_f64() || value.is_i64() || value.is_u64() {
                         result.push_str(&format!("json_field('{}', raw) IS NOT {}", key, self.value(value).unwrap()));
-                        term_count += 1;
                     } else if value.is_null() {
                         result.push_str(&format!("json_field('{}', raw) IS NOT NULL", key));
-                        term_count += 1;
                     } else {
                         return Err(format!("Unsupported type: {}", value));
                     }
                 }
+                break;
             }
         }
         Ok(result)

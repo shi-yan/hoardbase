@@ -133,9 +133,9 @@ impl Database {
         stmt.execute(&[collection_name, "0", collection_name]).unwrap();
     }
 
-    pub fn create_collection(&mut self, collection_name: &str) -> Result<&std::rc::Rc<std::cell::RefCell<Collection>>, &str> {
+    pub fn create_collection(&mut self, collection_name: &str) -> Result<std::cell::RefMut<Collection>, &str> {
         if self.collections.contains_key(collection_name) {
-            Ok(self.collections.get(collection_name).clone().unwrap())
+            Ok(self.collections.get(collection_name).clone().unwrap().borrow_mut())
         } else {
             let mut conn = self.connection.borrow_mut();
 
@@ -151,13 +151,13 @@ impl Database {
                     table_name: collection_name.to_string(),
                 })),
             );
-            Ok(self.collections.get(collection_name).clone().unwrap())
+            Ok(self.collections.get(collection_name).clone().unwrap().borrow_mut())
         }
     }
 
-    pub fn collection(&mut self, collection_name: &str) -> Result<&std::rc::Rc<std::cell::RefCell<Collection>>, &str> {
+    pub fn collection(&mut self, collection_name: &str) -> Result<std::cell::RefMut<Collection>, &str> {
         if self.collections.contains_key(collection_name) {
-            Ok(self.collections.get(collection_name).clone().unwrap())
+            Ok(self.collections.get(collection_name).clone().unwrap().borrow_mut())
         } else {
             Err("No collection found")
         }

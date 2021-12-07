@@ -11,11 +11,12 @@ fn main() {
 
     let mut db = database::Database::open("debug.db").unwrap();
     //conn.init();
-    let collection =  db.create_collection("test_collect.wef").unwrap();
+    {
+        let mut collection =  db.create_collection("test_collect.wef").unwrap();
+        collection.find();
+    }
 
-    collection.borrow_mut().find();
-
-    db.collection("test_collect.wef").unwrap().borrow_mut().find();
+    db.collection("test_collect.wef").unwrap().find();
 
     let collections = db.list_collections();
 
@@ -23,7 +24,7 @@ fn main() {
         println!("{}", coll.borrow().name);
     }
         
-    db.collection("test_collect.wef").unwrap().borrow_mut().insert_one(json!(
+    db.collection("test_collect.wef").unwrap().insert_one(json!(
         {
             "name": "test",
             "age": 10,
@@ -34,7 +35,7 @@ fn main() {
         }
     )).unwrap();
 
-    let result = db.collection("test_collect.wef").unwrap().borrow_mut().find_one(json!(
+    let result = db.collection("test_collect.wef").unwrap().find_one(json!(
         {
             "age": 10
         }
@@ -69,7 +70,7 @@ fn main() {
     println!("{}", translator.query_document(&query4).unwrap());
 
     let query5 = json!(
-        { "size.h": { "$gt": 15 }, "size.uom": "in", "status": "D", "name": "test" }
+        { "$nor": { "a": 15, "b": 32, "c" : 40 }, "size.uom": "in", "status": "D", "name": "test" }
     );
 
     println!("{}", translator.query_document(&query5).unwrap());
