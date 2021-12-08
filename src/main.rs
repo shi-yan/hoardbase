@@ -79,4 +79,7 @@ fn main() {
     );
     params.clear();
     println!("{} ({:?})", translator.query_document(&query5, &mut params).unwrap(), params);
+
+    let count = db.collection("test_collect.wef").unwrap().count_document(&json!({})).unwrap();
+    println!("document count {}", count);
 }

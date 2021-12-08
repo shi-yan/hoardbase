@@ -50,10 +50,19 @@ impl Collection {
         println!("call find for collection {}", self.name);
     }
 
-    pub fn count() {}
+    pub fn count_document(&mut self, query: &serde_json::Value) -> std::result::Result<i64, &str> {
+        //todo implement skip limit
+        let mut params = Vec::<rusqlite::types::Value>::new();
+        let where_str: String = QueryTranslator{}.query_document(&query, &mut params).unwrap();
+        //println!("where_str {}", &where_str);
+        let conn = self.connection.borrow_mut();
+        let mut stmt = conn.prepare_cached(&format!("SELECT COUNT(1) FROM [{}] {};", &self.table_name, if where_str.len() > 0 {format!("WHERE {}", &where_str)} else {String::from("")})).unwrap();
+        let count = stmt.query_row(params_from_iter(params.iter()), |row| Ok(row.get::<_, i64>(0).unwrap())).unwrap();
+        Ok(count)
+    }
     
     pub fn create_index(&mut self, config: &serde_json::Value, is_unique: bool) ->std::result::Result<(), String> {
-
+        //todo implement type and size index
         let mut fields:Vec<(String, i8)> = Vec::new();
 
         let result = translate_index_config(&config, "", &mut fields);
@@ -98,7 +107,7 @@ impl Collection {
         let where_str: String = QueryTranslator{}.query_document(&query, &mut params).unwrap();
         //println!("where_str {}", &where_str);
         let conn = self.connection.borrow_mut();
-        let mut stmt = conn.prepare_cached(&format!("SELECT * FROM [{}] WHERE {} LIMIT 1;", &self.table_name, &where_str)).unwrap();
+        let mut stmt = conn.prepare_cached(&format!("SELECT * FROM [{}] {} LIMIT 1;", &self.table_name, if where_str.len() > 0 {format!("WHERE {}", &where_str)} else {String::from("")})).unwrap();
         let row = stmt.query_row(params_from_iter(params.iter()), |row| Ok((row.get::<_, i64>(0).unwrap(), row.get::<_, Vec<u8>>(1).unwrap()))).unwrap();
         let mut bson_doc: bson::Document = bson::from_reader(row.1.as_slice()).unwrap();
         bson_doc.insert("_id", row.0);
