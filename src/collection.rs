@@ -7,6 +7,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use rusqlite::params;
 use serde_json::json;
+use slugify::slugify;
+
 use crate::query_translator::QueryTranslator;
 
 pub struct Collection {
@@ -15,13 +17,72 @@ pub struct Collection {
     pub table_name: String,
 }
 
+fn translate_index_config(config: &serde_json::Value, scope: &str, fields: &mut Vec<(String, i8)>) -> std::result::Result<(), &'static str> {
+    if config.is_object() {
+        for (key, value) in config.as_object().unwrap().iter() 
+        {
+           if value.is_object() {
+               return translate_index_config(&value, &format!("{}{}.", scope, key), fields);
+           }
+           else if value.is_number() {
+              let order = value.as_i64().unwrap();
+
+              if order != -1 && order != 1 {
+                  return Err("Invalid order");
+              }
+
+              fields.push((format!("{}{}", scope, key), order as i8));
+              return Ok(());
+           }
+           else {
+                return Err("Invalid index config");
+           }
+        }
+        Err("no members in index config")
+    }
+    else {
+        Err ("Index config must be an object")
+    }
+}
+
 impl Collection {
     pub fn find(&mut self) {
         println!("call find for collection {}", self.name);
     }
 
     pub fn count() {}
-    pub fn create_index() {}
+    
+    pub fn create_index(&mut self, config: &serde_json::Value, is_unique: bool) ->std::result::Result<(), String> {
+
+        let mut fields:Vec<(String, i8)> = Vec::new();
+
+        let result = translate_index_config(&config, "", &mut fields);
+
+        if let Err(e) = result {
+            return Err(String::from(e));
+        }
+        let conn = self.connection.borrow_mut();
+        let mut index_name = String::new();
+        let mut config_str  = String::new();
+        for field in fields {
+            if config_str.len() > 0 {
+                config_str.push_str(",");
+            }
+            config_str.push_str(&format!("json_field('{}', raw) {}", field.0, if field.1 == 1 { "ASC" } else { "DESC" }));
+            index_name.push_str(field.0.as_str());
+            index_name.push_str("_");
+        }
+
+        index_name = slugify!(index_name.as_str(), separator = "_");
+
+        //println!("CREATE {} INDEX IF NOT EXISTS {} ON [{}]({});", if is_unique {"UNIQUE"} else {""},index_name , &self.table_name, &config_str);
+
+        match conn.execute(&format!("CREATE {} INDEX IF NOT EXISTS {} ON [{}]({});", if is_unique {"UNIQUE"} else {""}, index_name, &self.table_name, &config_str), []) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(e.to_string())
+        }
+    }
+
     pub fn delete_one() {}
     pub fn delete_many() {}
 
@@ -32,21 +93,17 @@ impl Collection {
     pub fn ensure_index() {}
     pub fn explain() {}
 
-    pub fn find_one(&mut self, query: serde_json::Value) -> std::result::Result<serde_json::Value, &str> {
-
+    pub fn find_one(&mut self, query: &serde_json::Value) -> std::result::Result<serde_json::Value, &str> {
         let mut params = Vec::<rusqlite::types::Value>::new();
         let where_str: String = QueryTranslator{}.query_document(&query, &mut params).unwrap();
-      
-        println!("where_str {}", &where_str);
+        //println!("where_str {}", &where_str);
+        let conn = self.connection.borrow_mut();
+        let mut stmt = conn.prepare_cached(&format!("SELECT * FROM [{}] WHERE {} LIMIT 1;", &self.table_name, &where_str)).unwrap();
+        let row = stmt.query_row(params_from_iter(params.iter()), |row| Ok((row.get::<_, i64>(0).unwrap(), row.get::<_, Vec<u8>>(1).unwrap()))).unwrap();
+        let mut bson_doc: bson::Document = bson::from_reader(row.1.as_slice()).unwrap();
+        bson_doc.insert("_id", row.0);
+        let json_doc: serde_json::Value = bson::Bson::from(&bson_doc).into();
         
-        let mut conn = self.connection.borrow_mut();
-        let tx_inner = conn.transaction().unwrap();//params_from_iter(params.iter())
-        let value = Collection::_find_one_transaction(&self.table_name, &tx_inner, &where_str, params_from_iter(params.iter())).unwrap();
-        tx_inner.commit().unwrap();
-
-        let bson_doc: bson::Bson = bson::from_reader(value.1.as_slice()).unwrap();
-        let json_doc: serde_json::Value = bson_doc.clone().into();
-
         Ok(json_doc)
     }
 
@@ -56,14 +113,14 @@ impl Collection {
     pub fn find_and_modify() {}
     pub fn get_indexes() {}
 
-    pub fn insert_one(&mut self, document: serde_json::Value) -> std::result::Result<(), &str> {
-        let mut conn = self.connection.borrow_mut();
+    pub fn insert_one(&mut self, document: &serde_json::Value) -> std::result::Result<(), &str> {
         let bson_doc = bson::ser::to_document(&document).unwrap();
         let mut bytes: Vec<u8> = Vec::new();
         bson_doc.to_writer(&mut bytes).unwrap();
-        let tx_inner = conn.transaction().unwrap();
-        Collection::_insert_one_transaction(&self.table_name, &tx_inner, bytes.as_ref());
-        tx_inner.commit().unwrap();
+        let conn = self.connection.borrow_mut();
+        let mut stmt = conn.prepare_cached(&format!("INSERT INTO [{}] (raw) VALUES (?1)", &self.table_name)).unwrap();
+        let bytes_ref:&[u8] = bytes.as_ref();
+        stmt.execute(&[bytes_ref]).unwrap();
         Ok(())
     }
 
@@ -75,24 +132,4 @@ impl Collection {
 
     pub fn update_one() {}
     pub fn update_many() {}
-
-    fn _insert_one_transaction(collection_name: &str, tx: &rusqlite::Transaction, blob: &[u8]) {
-        let mut stmt = tx.prepare_cached(&format!("INSERT INTO [{}] (raw) VALUES (?1)", collection_name)).unwrap();
-        stmt.execute(&[blob]).unwrap();
-    }
-
-    fn _find_one_transaction<P>(collection_name: &str, tx: &rusqlite::Transaction, where_str: &str, values: P) -> Result<(u64, Vec<u8>), &'static str>
-    where
-        P: rusqlite::Params,
-    {
-        let mut stmt = tx.prepare_cached(&format!("SELECT * FROM [{}] WHERE {} LIMIT 1;", collection_name, where_str)).unwrap();
-        let row = stmt.query_row(values, |row| Ok((row.get::<_, u64>(0).unwrap(), row.get::<_, Vec<u8>>(1).unwrap())));
-
-        //let row = stmt.query_row(values, |row|  Ok(  row.get::<_, u64>(0).unwrap() ));
-
-        //println!("{:?}", row);
-        Ok(row.unwrap())
-
-        //Ok((1, vec![]))
-    }
 }

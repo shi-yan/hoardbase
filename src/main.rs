@@ -1,6 +1,7 @@
 use std::fs::File;
 use std::io::Write;
 use serde_json::json;
+#[macro_use] extern  crate  slugify;
 
 mod database;
 mod collection;
@@ -10,10 +11,10 @@ fn main() {
     println!("Hello, world!");
 
     let mut db = database::Database::open("debug.db").unwrap();
-    //conn.init();
+
     {
         let mut collection =  db.create_collection("test_collect.wef").unwrap();
-        collection.find();
+        collection.create_index(&json!({"age": 1}), false).unwrap();
     }
 
     db.collection("test_collect.wef").unwrap().find();
@@ -25,7 +26,7 @@ fn main() {
     }
     
     for age in 18..300 {
-        db.collection("test_collect.wef").unwrap().insert_one(json!(
+        db.collection("test_collect.wef").unwrap().insert_one(&json!(
             {
                 "name": format!("test{}", age),
                 "age": age,
@@ -37,7 +38,7 @@ fn main() {
         )).unwrap();
     }
 
-    let result = db.collection("test_collect.wef").unwrap().find_one(json!(
+    let result = db.collection("test_collect.wef").unwrap().find_one(&json!(
         {
             "age": 299
         }

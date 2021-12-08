@@ -14,8 +14,7 @@ fn trace(val: &str) {
     println!("trace: {}", val);
 }
 
-fn profile(val: & str, time: std::time::Duration)
-{
+fn profile(val: &str, time: std::time::Duration) {
     println!("profile: {} {}", val, time.as_nanos());
 }
 
@@ -124,35 +123,30 @@ impl Database {
         }
     }
 
-    fn _create_collection_transaction(collection_name: &str, tx: &rusqlite::Transaction) {
-        tx.execute(
-            &format!(
-                "CREATE TABLE [{}] (
-                      _id              INTEGER PRIMARY KEY,
-                      raw             BLOB NOT NULL
-                      )",
-                collection_name
-            ),
-            [],
-        )
-        .unwrap();
-
-        tx.execute(&format!("CREATE INDEX IF NOT EXISTS age_index ON [{}](json_field('age', raw))", collection_name), []).unwrap();
-
-        let mut stmt = tx.prepare_cached("INSERT INTO _hoardbase (collection ,type, table_name) VALUES (?1, ?2, ?3)").unwrap();
-        stmt.execute(&[collection_name, "0", collection_name]).unwrap();
-    }
-
     pub fn create_collection(&mut self, collection_name: &str) -> Result<std::cell::RefMut<Collection>, &str> {
         if self.collections.contains_key(collection_name) {
             Ok(self.collections.get(collection_name).clone().unwrap().borrow_mut())
         } else {
             let mut conn = self.connection.borrow_mut();
+            let tx = conn.transaction().unwrap();
 
-            let tx_inner = conn.transaction().unwrap();
-            Database::_create_collection_transaction(collection_name, &tx_inner);
-            tx_inner.commit().unwrap();
+            {
+                tx.execute(
+                    &format!(
+                        "CREATE TABLE [{}] (
+                          _id              INTEGER PRIMARY KEY,
+                          raw             BLOB NOT NULL
+                          )",
+                        collection_name
+                    ),
+                    [],
+                )
+                .unwrap();
 
+                let mut stmt = tx.prepare_cached("INSERT INTO _hoardbase (collection ,type, table_name) VALUES (?1, ?2, ?3)").unwrap();
+                stmt.execute(&[collection_name, "0", collection_name]).unwrap();
+            }
+            tx.commit().unwrap();
             self.collections.insert(
                 collection_name.to_string(),
                 std::rc::Rc::new(std::cell::RefCell::new(Collection {
