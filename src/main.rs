@@ -23,21 +23,23 @@ fn main() {
     for coll in collections {
         println!("{}", coll.borrow().name);
     }
-        
-    db.collection("test_collect.wef").unwrap().insert_one(json!(
-        {
-            "name": "test",
-            "age": 10,
-            "test_struct": {
-                "name": "test",
-                "age": 10
+    
+    for age in 18..300 {
+        db.collection("test_collect.wef").unwrap().insert_one(json!(
+            {
+                "name": format!("test{}", age),
+                "age": age,
+                "test_struct": {
+                    "name": "test",
+                    "age": 10
+                }
             }
-        }
-    )).unwrap();
+        )).unwrap();
+    }
 
     let result = db.collection("test_collect.wef").unwrap().find_one(json!(
         {
-            "age": 10
+            "age": 299
         }
     )).unwrap();
 
@@ -49,29 +51,31 @@ fn main() {
 
     let translator = query_translator::QueryTranslator{};
 
-    println!("{}", translator.query_document(&query1).unwrap());
+    let mut params = Vec::<rusqlite::types::Value>::new();
+
+    println!("{} ({:?})", translator.query_document(&query1, &mut params).unwrap(), params);
 
     let query2 = json!(
         { "size.uom": "in" }
     );
-
-    println!("{}", translator.query_document(&query2).unwrap());
+    params.clear();
+    println!("{} ({:?})", translator.query_document(&query2, &mut params).unwrap(), params);
 
     let query3 = json!(
         { "size.h": { "$lt": 14 } }
     );
-
-    println!("{}", translator.query_document(&query3).unwrap());
+    params.clear();
+    println!("{} ({:?})", translator.query_document(&query3, &mut params).unwrap(), params);
 
     let query4 = json!(
         { "size.h": { "$lt": 15 }, "size.uom": "in", "status": "D" }
     );
-
-    println!("{}", translator.query_document(&query4).unwrap());
+    params.clear();
+    println!("{} ({:?})", translator.query_document(&query4, &mut params).unwrap(), params);
 
     let query5 = json!(
-        { "$nor": { "a": 15, "b": 32, "c" : 40 }, "size.uom": "in", "status": "D", "name": "test" }
+        { "$nor": [ {"a": 15}, {"b": 32}, {"c" : 40} ], "size.uom": "in", "status": "D", "name": "test" }
     );
-
-    println!("{}", translator.query_document(&query5).unwrap());
+    params.clear();
+    println!("{} ({:?})", translator.query_document(&query5, &mut params).unwrap(), params);
 }

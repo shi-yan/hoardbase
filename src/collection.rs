@@ -6,6 +6,7 @@ use serde_json::Value;
 use std::cell::RefCell;
 use std::rc::Rc;
 use rusqlite::params;
+use serde_json::json;
 use crate::query_translator::QueryTranslator;
 
 pub struct Collection {
@@ -33,16 +34,14 @@ impl Collection {
 
     pub fn find_one(&mut self, query: serde_json::Value) -> std::result::Result<serde_json::Value, &str> {
 
-        let where_str: String = QueryTranslator{}.query_document(&query).unwrap();
-        let mut params: Vec<u64> = Vec::new();
-
-        params.push(10);
-
+        let mut params = Vec::<rusqlite::types::Value>::new();
+        let where_str: String = QueryTranslator{}.query_document(&query, &mut params).unwrap();
+      
         println!("where_str {}", &where_str);
         
         let mut conn = self.connection.borrow_mut();
         let tx_inner = conn.transaction().unwrap();//params_from_iter(params.iter())
-        let value = Collection::_find_one_transaction(&self.table_name, &tx_inner, &where_str, params![] ).unwrap();
+        let value = Collection::_find_one_transaction(&self.table_name, &tx_inner, &where_str, params_from_iter(params.iter())).unwrap();
         tx_inner.commit().unwrap();
 
         let bson_doc: bson::Bson = bson::from_reader(value.1.as_slice()).unwrap();
@@ -86,8 +85,14 @@ impl Collection {
     where
         P: rusqlite::Params,
     {
-        let mut stmt = tx.prepare_cached(&format!("SELECT * FROM [{}] WHERE {} LIMIT 1", collection_name, where_str)).unwrap();
+        let mut stmt = tx.prepare_cached(&format!("SELECT * FROM [{}] WHERE {} LIMIT 1;", collection_name, where_str)).unwrap();
         let row = stmt.query_row(values, |row| Ok((row.get::<_, u64>(0).unwrap(), row.get::<_, Vec<u8>>(1).unwrap())));
+
+        //let row = stmt.query_row(values, |row|  Ok(  row.get::<_, u64>(0).unwrap() ));
+
+        //println!("{:?}", row);
         Ok(row.unwrap())
+
+        //Ok((1, vec![]))
     }
 }

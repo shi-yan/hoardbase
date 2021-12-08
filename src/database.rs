@@ -10,6 +10,15 @@ pub struct Database {
     collections: HashMap<String, std::rc::Rc<std::cell::RefCell<Collection>>>,
 }
 
+fn trace(val: &str) {
+    println!("trace: {}", val);
+}
+
+fn profile(val: & str, time: std::time::Duration)
+{
+    println!("profile: {} {}", val, time.as_nanos());
+}
+
 impl Database {
     pub fn open(path: &str) -> std::result::Result<Database, &str> {
         if let Ok(conn) = rusqlite::Connection::open(path) {
@@ -30,8 +39,9 @@ impl Database {
     }
 
     fn init(&mut self) {
-        let conn = self.connection.borrow();
-
+        let mut conn = self.connection.borrow_mut();
+        conn.trace(Some(trace));
+        conn.profile(Some(profile));
         conn.create_scalar_function("json_field", 2, rusqlite::functions::FunctionFlags::SQLITE_UTF8 | rusqlite::functions::FunctionFlags::SQLITE_DETERMINISTIC, move |ctx| {
             assert_eq!(ctx.len(), 2, "called with unexpected number of arguments");
 
