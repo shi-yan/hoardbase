@@ -7,7 +7,7 @@ default-run = "core"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-rusqlite = { version = "0.26.1", features = ["blob", "serde_json", "time", "url", "functions", "backup", "trace"] }
+rusqlite = { version = "0.26.1", features = ["blob", "serde_json", "time", "url", "functions", "backup", "trace", "bundled"] }
 serde_json = "1.0.72"
 bson = "2.0.1"
 slugify = "0.1.0"
@@ -15,6 +15,8 @@ sha-1 = "0.10.0"
 hex = "0.4.3"
 cursive = "0.16.3"
 clap = "2.34.0"
+cursive_tree_view = "0.7"
+cursive_table_view = "0.13.3"
 
 [[bin]]
 name = "hoardmin"
