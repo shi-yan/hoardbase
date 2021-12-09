@@ -1,27 +1,70 @@
+use crate::collection::Collection;
 use bson::Bson;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::fmt;
 use std::sync::Arc;
+use sha1::{Sha1, Digest};
 
-use crate::collection::Collection;
+#[derive(Clone, Debug)]
+pub struct Config {
+    pub path: String,
+    pub should_trace: bool,
+    pub should_profile: bool,
+    pub should_hash_document: bool,
+    pub should_log_last_modified: bool,
+    pub should_hash_unique: bool,
+}
+
+impl Config {
+    pub fn new(path: &str) -> Config {
+        Config {
+            path: String::from(path),
+            should_trace: false,
+            should_profile: false,
+            should_hash_document: false,
+            should_log_last_modified: false,
+            should_hash_unique: false,
+        }
+    }
+
+    pub fn trace<'a>(&'a mut self, arg: bool) -> &'a mut Config {
+        self.should_trace = arg;
+        self
+    }
+
+    pub fn profile<'a>(&'a mut self, args: bool) -> &'a mut Config {
+        self.should_profile = args;
+        self
+    }
+
+    pub fn hash_document<'a>(&'a mut self, args: bool) -> &'a mut Config {
+        self.should_hash_document = args;
+        self
+    }
+
+    pub fn log_last_modified<'a>(&'a mut self, args: bool) -> &'a mut Config {
+        self.should_log_last_modified = args;
+        self
+    }
+
+    pub fn hash_unique<'a>(&'a mut self, args: bool) -> &'a mut Config {
+        self.should_hash_unique = args;
+        self
+    }
+}
 
 pub struct Database {
+    config: Config,
     connection: std::rc::Rc<std::cell::RefCell<rusqlite::Connection>>,
     collections: HashMap<String, std::rc::Rc<std::cell::RefCell<Collection>>>,
 }
 
-fn trace(val: &str) {
-    println!("trace: {}", val);
-}
-
-fn profile(val: &str, time: std::time::Duration) {
-    println!("profile: {} {}", val, time.as_nanos());
-}
-
 impl Database {
-    pub fn open(path: &str) -> std::result::Result<Database, &str> {
-        if let Ok(conn) = rusqlite::Connection::open(path) {
+    pub fn open(config: &Config) -> std::result::Result<Database, &str> {
+        if let Ok(conn) = rusqlite::Connection::open(config.path.clone()) {
             let mut connection = Database {
+                config: config.clone(),
                 connection: std::rc::Rc::new(std::cell::RefCell::new(conn)),
                 collections: HashMap::new(),
             };
@@ -39,8 +82,19 @@ impl Database {
 
     fn init(&mut self) {
         let mut conn = self.connection.borrow_mut();
-        conn.trace(Some(trace));
-        conn.profile(Some(profile));
+
+        if self.config.should_trace {
+            conn.trace(Some(|statement| {
+                println!("trace: {}", statement);
+            }));
+        }
+
+        if self.config.should_profile {
+            conn.profile(Some(|statement, duration| {
+                println!("profile: {} {} nanos", statement, duration.as_nanos());
+            }));
+        }
+
         conn.create_scalar_function("json_field", 2, rusqlite::functions::FunctionFlags::SQLITE_UTF8 | rusqlite::functions::FunctionFlags::SQLITE_DETERMINISTIC, move |ctx| {
             assert_eq!(ctx.len(), 2, "called with unexpected number of arguments");
 
@@ -89,16 +143,34 @@ impl Database {
         })
         .unwrap();
 
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS _hoardbase (
+
+        conn.create_scalar_function("sha1", 1, rusqlite::functions::FunctionFlags::SQLITE_UTF8 | rusqlite::functions::FunctionFlags::SQLITE_DETERMINISTIC, move |ctx| {
+            assert_eq!(ctx.len(), 1, "called with unexpected number of arguments");
+
+            let blob = ctx.get_raw(0).as_blob().unwrap();
+            let mut hasher = Sha1::new();
+            hasher.update(blob);
+            let result = hasher.finalize();
+            let hex_string = hex::encode(result.as_slice());
+            Ok(Some(hex_string))
+        })
+        .unwrap();
+
+        let tx = conn.transaction().unwrap();
+        {
+            tx.execute(
+                "CREATE TABLE IF NOT EXISTS _hoardbase (
                       id              INTEGER PRIMARY KEY,
                       collection      TEXT NOT NULL,
                       type            INTEGER NOT NULL,
                       table_name      TEXT UNIQUE NOT NULL
                       )",
-            [],
-        )
-        .unwrap();
+                [],
+            )
+            .unwrap();
+            tx.execute(&format!("CREATE UNIQUE INDEX IF NOT EXISTS collection ON _hoardbase(collection);"), []).unwrap();
+        }
+        tx.commit().unwrap();
 
         let mut stmt = conn.prepare("SELECT * FROM _hoardbase WHERE type=0").unwrap();
         let mut rows = stmt.query([]).unwrap();
@@ -136,14 +208,21 @@ impl Database {
                         "CREATE TABLE [{}] (
                           _id              INTEGER PRIMARY KEY,
                           raw             BLOB NOT NULL
+                          {}
+                          {}
                           )",
-                        collection_name
+                        collection_name,
+                        if self.config.should_hash_document { ", _hash NCHAR(40) GENERATED ALWAYS AS (sha1(raw)) STORED" } else { "" },
+                        if self.config.should_log_last_modified { ", _last_modified DATETIME" } else { "" },
                     ),
                     [],
                 )
                 .unwrap();
+                if self.config.should_hash_document {
+                    tx.execute(&format!("CREATE {} INDEX IF NOT EXISTS hash ON [{}](_hash);", if self.config.should_hash_unique { "UNIQUE" } else { "" }, collection_name), []).unwrap();
+                }
 
-                let mut stmt = tx.prepare_cached("INSERT INTO _hoardbase (collection ,type, table_name) VALUES (?1, ?2, ?3)").unwrap();
+                let mut stmt = tx.prepare_cached("INSERT INTO _hoardbase (collection ,type, table_name) VALUES (?1, ?2, ?3) ON CONFLICT(collection) DO NOTHING").unwrap();
                 stmt.execute(&[collection_name, "0", collection_name]).unwrap();
             }
             tx.commit().unwrap();

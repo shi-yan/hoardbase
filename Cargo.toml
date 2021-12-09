@@ -2,6 +2,7 @@
 name = "hoardbase"
 version = "0.1.0"
 edition = "2021"
+default-run = "core"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -10,3 +11,15 @@ rusqlite = { version = "0.26.1", features = ["blob", "serde_json", "time", "url"
 serde_json = "1.0.72"
 bson = "2.0.1"
 slugify = "0.1.0"
+sha-1 = "0.10.0"
+hex = "0.4.3"
+cursive = "0.16.3"
+clap = "2.34.0"
+
+[[bin]]
+name = "hoardmin"
+path = "src/hoardmin.rs"
+
+[[bin]]
+name = "core"
+path = "src/main.rs"

@@ -45,18 +45,37 @@ fn translate_index_config(config: &serde_json::Value, scope: &str, fields: &mut 
     }
 }
 
+pub struct SearchOption {
+    pub limit: i64,
+    pub skip: i64,
+}
+
+impl SearchOption {
+    pub fn default() -> Self {
+        SearchOption {
+            limit: -1,
+            skip: 0,
+        }
+    }
+}
+
 impl Collection {
     pub fn find(&mut self) {
         println!("call find for collection {}", self.name);
     }
 
-    pub fn count_document(&mut self, query: &serde_json::Value) -> std::result::Result<i64, &str> {
+    pub fn count_document(&mut self, query: &serde_json::Value, options: &Option<SearchOption>) -> std::result::Result<i64, &str> {
         //todo implement skip limit
         let mut params = Vec::<rusqlite::types::Value>::new();
         let where_str: String = QueryTranslator{}.query_document(&query, &mut params).unwrap();
         //println!("where_str {}", &where_str);
+        let mut option_str = String::new();
+        if let Some(opt) = options {
+            option_str = format!("LIMIT {} OFFSET {}", opt.limit, opt.skip);
+        }
+
         let conn = self.connection.borrow_mut();
-        let mut stmt = conn.prepare_cached(&format!("SELECT COUNT(1) FROM [{}] {};", &self.table_name, if where_str.len() > 0 {format!("WHERE {}", &where_str)} else {String::from("")})).unwrap();
+        let mut stmt = conn.prepare_cached(&format!("SELECT COUNT(1) FROM [{}] {} {};", &self.table_name, if where_str.len() > 0 {format!("WHERE {}", &where_str)} else {String::from("")}, option_str)).unwrap();
         let count = stmt.query_row(params_from_iter(params.iter()), |row| Ok(row.get::<_, i64>(0).unwrap())).unwrap();
         Ok(count)
     }
@@ -95,22 +114,41 @@ impl Collection {
     pub fn delete_one() {}
     pub fn delete_many() {}
 
-    pub fn distinct(&mut self) {}
+    pub fn distinct(&mut self, field:&str, query: &Option<&serde_json::Value>, options: &Option<SearchOption>) -> std::result::Result<i64, &str> {
+        //todo implement skip limit
+        let mut params = Vec::<rusqlite::types::Value>::new();
+        let mut where_str: String = String::new();
+        if let Some(q) = query {
+            where_str = QueryTranslator{}.query_document(q, &mut params).unwrap();
+        }
+        
+        //println!("where_str {}", &where_str);
+        let mut option_str = String::new();
+        if let Some(opt) = options {
+            option_str = format!("LIMIT {} OFFSET {}", opt.limit, opt.skip);
+        }
+
+        let conn = self.connection.borrow_mut();
+        let mut stmt = conn.prepare_cached(&format!("SELECT COUNT(DISTINCT json_field('{}', raw)) FROM [{}] {} {};", field, &self.table_name, if where_str.len() > 0 {format!("WHERE {}", &where_str)} else {String::from("")}, option_str)).unwrap();
+        let count = stmt.query_row(params_from_iter(params.iter()), |row| Ok(row.get::<_, i64>(0).unwrap())).unwrap();
+        Ok(count)
+    }
+
     pub fn drop() {}
 
     pub fn drop_index() {}
     pub fn ensure_index() {}
-    pub fn explain() {}
 
-    pub fn find_one(&mut self, query: &serde_json::Value) -> std::result::Result<serde_json::Value, &str> {
+    pub fn find_one(&mut self, query: &serde_json::Value, skip: i64) -> std::result::Result<serde_json::Value, &str> {
         let mut params = Vec::<rusqlite::types::Value>::new();
         let where_str: String = QueryTranslator{}.query_document(&query, &mut params).unwrap();
         //println!("where_str {}", &where_str);
         let conn = self.connection.borrow_mut();
-        let mut stmt = conn.prepare_cached(&format!("SELECT * FROM [{}] {} LIMIT 1;", &self.table_name, if where_str.len() > 0 {format!("WHERE {}", &where_str)} else {String::from("")})).unwrap();
-        let row = stmt.query_row(params_from_iter(params.iter()), |row| Ok((row.get::<_, i64>(0).unwrap(), row.get::<_, Vec<u8>>(1).unwrap()))).unwrap();
+        let mut stmt = conn.prepare_cached(&format!("SELECT * FROM [{}] {} LIMIT 1 {};", &self.table_name, if where_str.len() > 0 {format!("WHERE {}", &where_str)} else {String::from("")}, if skip != 0 {format!("OFFSET {}", skip)} else {String::from("")})).unwrap();
+        let row = stmt.query_row(params_from_iter(params.iter()), |row| Ok((row.get::<_, i64>(0).unwrap(), row.get::<_, Vec<u8>>(1).unwrap(), row.get::<_, String>(2).unwrap()))).unwrap();
         let mut bson_doc: bson::Document = bson::from_reader(row.1.as_slice()).unwrap();
         bson_doc.insert("_id", row.0);
+        bson_doc.insert("_hash", row.2);
         let json_doc: serde_json::Value = bson::Bson::from(&bson_doc).into();
         
         Ok(json_doc)
@@ -120,7 +158,9 @@ impl Collection {
     pub fn find_one_and_replace() {}
     pub fn find_one_and_update() {}
     pub fn find_and_modify() {}
-    pub fn get_indexes() {}
+    pub fn get_indexes() {
+        //PRAGMA index_info(table-name)
+    }
 
     pub fn insert_one(&mut self, document: &serde_json::Value) -> std::result::Result<(), &str> {
         let bson_doc = bson::ser::to_document(&document).unwrap();

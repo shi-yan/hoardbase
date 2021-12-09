@@ -10,7 +10,12 @@ mod query_translator;
 fn main() {
     println!("Hello, world!");
 
-    let mut db = database::Database::open("debug.db").unwrap();
+    let mut config = database::Config::new("test.db");
+    config.trace(true);
+    config.profile(true);
+    config.hash_document(true);
+
+    let mut db = database::Database::open(&config).unwrap();
 
     {
         let mut collection =  db.create_collection("test_collect.wef").unwrap();
@@ -42,7 +47,7 @@ fn main() {
         {
             "age": 299
         }
-    )).unwrap();
+    ),0).unwrap();
 
     println!("{:?}", result);
 
@@ -80,6 +85,12 @@ fn main() {
     params.clear();
     println!("{} ({:?})", translator.query_document(&query5, &mut params).unwrap(), params);
 
-    let count = db.collection("test_collect.wef").unwrap().count_document(&json!({})).unwrap();
+    let count = db.collection("test_collect.wef").unwrap().count_document(&json!({}), &None).unwrap();
     println!("document count {}", count);
+
+    let distinct_count = db.collection("test_collect.wef").unwrap().distinct("age", &None, &None).unwrap();
+
+    println!("distinct count {}", distinct_count);
+
+
 }
