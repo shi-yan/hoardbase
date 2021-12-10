@@ -185,6 +185,7 @@ impl Database {
                     collection.to_string(),
                     std::rc::Rc::new(std::cell::RefCell::new(Collection {
                         name: collection.to_string(),
+                        config: self.config.clone(),
                         connection: self.connection.clone(),
                         table_name: table_name.to_string(),
                     })),
@@ -219,7 +220,7 @@ impl Database {
                 )
                 .unwrap();
                 if self.config.should_hash_document {
-                    tx.execute(&format!("CREATE {} INDEX IF NOT EXISTS hash ON [{}](_hash);", if self.config.should_hash_unique { "UNIQUE" } else { "" }, collection_name), []).unwrap();
+                    tx.execute(&format!("CREATE {} INDEX IF NOT EXISTS _hash ON [{}](_hash);", if self.config.should_hash_unique { "UNIQUE" } else { "" }, collection_name), []).unwrap();
                 }
 
                 let mut stmt = tx.prepare_cached("INSERT INTO _hoardbase (collection ,type, table_name) VALUES (?1, ?2, ?3) ON CONFLICT(collection) DO NOTHING").unwrap();
@@ -230,6 +231,7 @@ impl Database {
                 collection_name.to_string(),
                 std::rc::Rc::new(std::cell::RefCell::new(Collection {
                     name: collection_name.to_string(),
+                    config: self.config.clone(),
                     connection: self.connection.clone(),
                     table_name: collection_name.to_string(),
                 })),

@@ -1,47 +1,46 @@
 use bson::ser::Serializer;
 use bson::Bson;
 use bson::Document;
+use chrono::prelude::*;
+use rusqlite::params;
 use rusqlite::params_from_iter;
+use serde_json::json;
 use serde_json::Value;
+use slugify::slugify;
 use std::cell::RefCell;
 use std::rc::Rc;
-use rusqlite::params;
-use serde_json::json;
-use slugify::slugify;
 
+use crate::database::Config;
 use crate::query_translator::QueryTranslator;
 
 pub struct Collection {
     pub connection: std::rc::Rc<std::cell::RefCell<rusqlite::Connection>>,
+    pub config: Config,
     pub name: String,
     pub table_name: String,
 }
 
 fn translate_index_config(config: &serde_json::Value, scope: &str, fields: &mut Vec<(String, i8)>) -> std::result::Result<(), &'static str> {
     if config.is_object() {
-        for (key, value) in config.as_object().unwrap().iter() 
-        {
-           if value.is_object() {
-               return translate_index_config(&value, &format!("{}{}.", scope, key), fields);
-           }
-           else if value.is_number() {
-              let order = value.as_i64().unwrap();
+        for (key, value) in config.as_object().unwrap().iter() {
+            if value.is_object() {
+                return translate_index_config(&value, &format!("{}{}.", scope, key), fields);
+            } else if value.is_number() {
+                let order = value.as_i64().unwrap();
 
-              if order != -1 && order != 1 {
-                  return Err("Invalid order");
-              }
+                if order != -1 && order != 1 {
+                    return Err("Invalid order");
+                }
 
-              fields.push((format!("{}{}", scope, key), order as i8));
-              return Ok(());
-           }
-           else {
+                fields.push((format!("{}{}", scope, key), order as i8));
+                return Ok(());
+            } else {
                 return Err("Invalid index config");
-           }
+            }
         }
         Err("no members in index config")
-    }
-    else {
-        Err ("Index config must be an object")
+    } else {
+        Err("Index config must be an object")
     }
 }
 
@@ -52,10 +51,7 @@ pub struct SearchOption {
 
 impl SearchOption {
     pub fn default() -> Self {
-        SearchOption {
-            limit: -1,
-            skip: 0,
-        }
+        SearchOption { limit: -1, skip: 0 }
     }
 }
 
@@ -67,7 +63,7 @@ impl Collection {
     pub fn count_document(&mut self, query: &serde_json::Value, options: &Option<SearchOption>) -> std::result::Result<i64, &str> {
         //todo implement skip limit
         let mut params = Vec::<rusqlite::types::Value>::new();
-        let where_str: String = QueryTranslator{}.query_document(&query, &mut params).unwrap();
+        let where_str: String = QueryTranslator {}.query_document(&query, &mut params).unwrap();
         //println!("where_str {}", &where_str);
         let mut option_str = String::new();
         if let Some(opt) = options {
@@ -75,14 +71,14 @@ impl Collection {
         }
 
         let conn = self.connection.borrow_mut();
-        let mut stmt = conn.prepare_cached(&format!("SELECT COUNT(1) FROM [{}] {} {};", &self.table_name, if where_str.len() > 0 {format!("WHERE {}", &where_str)} else {String::from("")}, option_str)).unwrap();
+        let mut stmt = conn.prepare_cached(&format!("SELECT COUNT(1) FROM [{}] {} {};", &self.table_name, if where_str.len() > 0 { format!("WHERE {}", &where_str) } else { String::from("") }, option_str)).unwrap();
         let count = stmt.query_row(params_from_iter(params.iter()), |row| Ok(row.get::<_, i64>(0).unwrap())).unwrap();
         Ok(count)
     }
-    
-    pub fn create_index(&mut self, config: &serde_json::Value, is_unique: bool) ->std::result::Result<(), String> {
+
+    pub fn create_index(&mut self, config: &serde_json::Value, is_unique: bool) -> std::result::Result<(), String> {
         //todo implement type and size index
-        let mut fields:Vec<(String, i8)> = Vec::new();
+        let mut fields: Vec<(String, i8)> = Vec::new();
 
         let result = translate_index_config(&config, "", &mut fields);
 
@@ -91,7 +87,7 @@ impl Collection {
         }
         let conn = self.connection.borrow_mut();
         let mut index_name = String::new();
-        let mut config_str  = String::new();
+        let mut config_str = String::new();
         for field in fields {
             if config_str.len() > 0 {
                 config_str.push_str(",");
@@ -105,23 +101,22 @@ impl Collection {
 
         //println!("CREATE {} INDEX IF NOT EXISTS {} ON [{}]({});", if is_unique {"UNIQUE"} else {""},index_name , &self.table_name, &config_str);
 
-        match conn.execute(&format!("CREATE {} INDEX IF NOT EXISTS {} ON [{}]({});", if is_unique {"UNIQUE"} else {""}, index_name, &self.table_name, &config_str), []) {
+        match conn.execute(&format!("CREATE {} INDEX IF NOT EXISTS {} ON [{}]({});", if is_unique { "UNIQUE" } else { "" }, index_name, &self.table_name, &config_str), []) {
             Ok(_) => Ok(()),
-            Err(e) => Err(e.to_string())
+            Err(e) => Err(e.to_string()),
         }
     }
 
     pub fn delete_one() {}
     pub fn delete_many() {}
 
-    pub fn distinct(&mut self, field:&str, query: &Option<&serde_json::Value>, options: &Option<SearchOption>) -> std::result::Result<i64, &str> {
+    pub fn distinct(&mut self, field: &str, query: &Option<&serde_json::Value>, options: &Option<SearchOption>) -> std::result::Result<i64, &str> {
         //todo implement skip limit
         let mut params = Vec::<rusqlite::types::Value>::new();
         let mut where_str: String = String::new();
         if let Some(q) = query {
-            where_str = QueryTranslator{}.query_document(q, &mut params).unwrap();
+            where_str = QueryTranslator {}.query_document(q, &mut params).unwrap();
         }
-        
         //println!("where_str {}", &where_str);
         let mut option_str = String::new();
         if let Some(opt) = options {
@@ -129,7 +124,7 @@ impl Collection {
         }
 
         let conn = self.connection.borrow_mut();
-        let mut stmt = conn.prepare_cached(&format!("SELECT COUNT(DISTINCT json_field('{}', raw)) FROM [{}] {} {};", field, &self.table_name, if where_str.len() > 0 {format!("WHERE {}", &where_str)} else {String::from("")}, option_str)).unwrap();
+        let mut stmt = conn.prepare_cached(&format!("SELECT COUNT(DISTINCT json_field('{}', raw)) FROM [{}] {} {};", field, &self.table_name, if where_str.len() > 0 { format!("WHERE {}", &where_str) } else { String::from("") }, option_str)).unwrap();
         let count = stmt.query_row(params_from_iter(params.iter()), |row| Ok(row.get::<_, i64>(0).unwrap())).unwrap();
         Ok(count)
     }
@@ -141,36 +136,112 @@ impl Collection {
 
     pub fn find_one(&mut self, query: &serde_json::Value, skip: i64) -> std::result::Result<serde_json::Value, &str> {
         let mut params = Vec::<rusqlite::types::Value>::new();
-        let where_str: String = QueryTranslator{}.query_document(&query, &mut params).unwrap();
+        let where_str: String = QueryTranslator {}.query_document(&query, &mut params).unwrap();
         //println!("where_str {}", &where_str);
         let conn = self.connection.borrow_mut();
-        let mut stmt = conn.prepare_cached(&format!("SELECT * FROM [{}] {} LIMIT 1 {};", &self.table_name, if where_str.len() > 0 {format!("WHERE {}", &where_str)} else {String::from("")}, if skip != 0 {format!("OFFSET {}", skip)} else {String::from("")})).unwrap();
-        let row = stmt.query_row(params_from_iter(params.iter()), |row| Ok((row.get::<_, i64>(0).unwrap(), row.get::<_, Vec<u8>>(1).unwrap(), row.get::<_, String>(2).unwrap()))).unwrap();
-        let mut bson_doc: bson::Document = bson::from_reader(row.1.as_slice()).unwrap();
-        bson_doc.insert("_id", row.0);
-        bson_doc.insert("_hash", row.2);
-        let json_doc: serde_json::Value = bson::Bson::from(&bson_doc).into();
-        
-        Ok(json_doc)
+        let mut stmt = conn
+            .prepare_cached(&format!("SELECT * FROM [{}] {} LIMIT 1 {};", &self.table_name, if where_str.len() > 0 { format!("WHERE {}", &where_str) } else { String::from("") }, if skip != 0 { format!("OFFSET {}", skip) } else { String::from("") }))
+            .unwrap();
+
+        if self.config.should_hash_document == false && self.config.should_log_last_modified == false {
+            let row = stmt
+                .query_row(params_from_iter(params.iter()), |row| {
+                    Ok((row.get::<_, i64>(0).unwrap(), row.get::<_, Vec<u8>>(1).unwrap() /*, row.get::<_, String>(2).unwrap()*/))
+                })
+                .unwrap();
+
+            let mut bson_doc: bson::Document = bson::from_reader(row.1.as_slice()).unwrap();
+            bson_doc.insert("_id", row.0);
+            //bson_doc.insert("_hash", row.2);
+            let json_doc: serde_json::Value = bson::Bson::from(&bson_doc).into();
+            Ok(json_doc)
+        } else if self.config.should_hash_document == true && self.config.should_log_last_modified == false {
+            let row = stmt.query_row(params_from_iter(params.iter()), |row| Ok((row.get::<_, i64>(0).unwrap(), row.get::<_, Vec<u8>>(1).unwrap(), row.get::<_, String>(2).unwrap()))).unwrap();
+            let mut bson_doc: bson::Document = bson::from_reader(row.1.as_slice()).unwrap();
+            bson_doc.insert("_id", row.0);
+            bson_doc.insert("_hash", row.2);
+            let json_doc: serde_json::Value = bson::Bson::from(&bson_doc).into();
+            Ok(json_doc)
+        } else if self.config.should_hash_document == true && self.config.should_log_last_modified == true {
+            let row = stmt.query_row(params_from_iter(params.iter()), |row| Ok((row.get::<_, i64>(0).unwrap(), row.get::<_, Vec<u8>>(1).unwrap(), row.get::<_, String>(2).unwrap(), row.get::<_, DateTime<Utc>>(3).unwrap()))).unwrap();
+            let mut bson_doc: bson::Document = bson::from_reader(row.1.as_slice()).unwrap();
+            bson_doc.insert("_id", row.0);
+            bson_doc.insert("_hash", row.2);
+            bson_doc.insert("_last_modified", row.3);
+            let json_doc: serde_json::Value = bson::Bson::from(&bson_doc).into();
+            Ok(json_doc)
+        } else if self.config.should_hash_document == false && self.config.should_log_last_modified == true {
+            let row = stmt.query_row(params_from_iter(params.iter()), |row| Ok((row.get::<_, i64>(0).unwrap(), row.get::<_, Vec<u8>>(1).unwrap(), row.get::<_, DateTime<Utc>>(2).unwrap()))).unwrap();
+            let mut bson_doc: bson::Document = bson::from_reader(row.1.as_slice()).unwrap();
+            bson_doc.insert("_id", row.0);
+            bson_doc.insert("_last_modified", row.2);
+            let json_doc: serde_json::Value = bson::Bson::from(&bson_doc).into();
+            Ok(json_doc)
+        } else {
+            Err("Unable to find document")
+        }
     }
 
     pub fn find_one_and_delete() {}
     pub fn find_one_and_replace() {}
     pub fn find_one_and_update() {}
     pub fn find_and_modify() {}
-    pub fn get_indexes() {
+    pub fn get_indexes(&mut self) -> Result<Vec<serde_json::Value>, String> {
         //PRAGMA index_info(table-name)
+
+        let conn = self.connection.borrow_mut();
+        println!("{}",format!("SELECT * FROM pragma_index_list('{}');", self.table_name));
+        let mut stmt = conn.prepare(&format!("SELECT * FROM pragma_index_list('{}');", self.table_name)).unwrap();
+        let mut rows = stmt.query([]).unwrap();
+
+        let mut result: Vec<serde_json::Value> = Vec::new();
+        while let Ok(row_result) = rows.next() {
+            if let Some(row) = row_result {
+                result.push( json!({
+                    "seq": row.get::<_, i64>(0).unwrap(),
+                    "name": row.get::<_, String>(1).unwrap(),
+                    "isUnique": row.get::<_, bool>(2).unwrap(),
+                    "type": row.get::<_, String>(3).unwrap(),
+                    "isPartial": row.get::<_, bool>(4).unwrap(),
+                }));
+
+            }
+            else {
+                break;
+            }
+        }
+        Ok(result)
+        //conn.query("PRAGMA index_info(%1)", params![self.table_name], |row| Ok(1)).unwrap();
     }
 
-    pub fn insert_one(&mut self, document: &serde_json::Value) -> std::result::Result<(), &str> {
+    pub fn insert_one(&mut self, document: &serde_json::Value) -> std::result::Result<(), String> {
         let bson_doc = bson::ser::to_document(&document).unwrap();
         let mut bytes: Vec<u8> = Vec::new();
         bson_doc.to_writer(&mut bytes).unwrap();
         let conn = self.connection.borrow_mut();
-        let mut stmt = conn.prepare_cached(&format!("INSERT INTO [{}] (raw) VALUES (?1)", &self.table_name)).unwrap();
-        let bytes_ref:&[u8] = bytes.as_ref();
-        stmt.execute(&[bytes_ref]).unwrap();
-        Ok(())
+        if self.config.should_log_last_modified {
+            let mut stmt = conn.prepare_cached(&format!("INSERT INTO [{}] (raw, _last_modified) VALUES (?1, datetime('now'))", &self.table_name)).unwrap();
+            let bytes_ref: &[u8] = bytes.as_ref();
+            match stmt.execute(&[bytes_ref]) {
+                Ok(_) => {
+                    return Ok(());
+                }
+                Err(e) => {
+                    return Err(e.to_string());
+                }
+            }
+        } else {
+            let mut stmt = conn.prepare_cached(&format!("INSERT INTO [{}] (raw) VALUES (?1)", &self.table_name)).unwrap();
+            let bytes_ref: &[u8] = bytes.as_ref();
+            match stmt.execute(&[bytes_ref]) {
+                Ok(_) => {
+                    return Ok(());
+                }
+                Err(e) => {
+                    return Err(e.to_string());
+                }
+            }
+        }
     }
 
     pub fn insert_many() {}

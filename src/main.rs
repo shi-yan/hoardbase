@@ -14,6 +14,7 @@ fn main() {
     config.trace(true);
     config.profile(true);
     config.hash_document(true);
+    config.log_last_modified(true);
 
     let mut db = database::Database::open(&config).unwrap();
 
@@ -92,5 +93,7 @@ fn main() {
 
     println!("distinct count {}", distinct_count);
 
+    let indices = db.collection("test_collect.wef").unwrap().get_indexes().unwrap();
 
+    println!("indices {:?}", indices);
 }
