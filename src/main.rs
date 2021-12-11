@@ -1,10 +1,11 @@
+use serde_json::json;
 use std::fs::File;
 use std::io::Write;
-use serde_json::json;
-#[macro_use] extern  crate  slugify;
+#[macro_use]
+extern crate slugify;
 
-mod database;
 mod collection;
+mod database;
 mod query_translator;
 
 fn main() {
@@ -19,7 +20,7 @@ fn main() {
     let mut db = database::Database::open(&config).unwrap();
 
     {
-        let mut collection =  db.create_collection("test_collect.wef").unwrap();
+        let mut collection = db.create_collection("test_collect.wef").unwrap();
         collection.create_index(&json!({"age": 1}), false).unwrap();
     }
 
@@ -30,25 +31,34 @@ fn main() {
     for coll in collections {
         println!("{}", coll.borrow().get_name());
     }
-    
     for age in 18..300 {
-        db.collection("test_collect.wef").unwrap().insert_one(&json!(
-            {
-                "name": format!("test{}", age),
-                "age": age,
-                "test_struct": {
-                    "name": "test",
-                    "age": 10
+        db.collection("test_collect.wef")
+            .unwrap()
+            .insert_one(&json!(
+                {
+                    "name": format!("test{}", age),
+                    "age": age,
+                    "test_struct": {
+                        "name": "test",
+                        "age": 10
+                    }
                 }
-            }
-        )).unwrap();
+            ))
+            .unwrap();
     }
 
-    let result = db.collection("test_collect.wef").unwrap().find_one(&json!(
-        {
-            "age": 299
-        }
-    ),0).unwrap();
+    let result = db
+        .collection("test_collect.wef")
+        .unwrap()
+        .find_one(
+            &json!(
+                {
+                    "age": 299
+                }
+            ),
+            0,
+        )
+        .unwrap();
 
     println!("{:?}", result);
 
@@ -56,7 +66,7 @@ fn main() {
         { "size": { "h": 14, "w": 21, "uom": "cm" } }
     );
 
-    let translator = query_translator::QueryTranslator{};
+    let translator = query_translator::QueryTranslator {};
 
     let mut params = Vec::<rusqlite::types::Value>::new();
 
@@ -96,4 +106,32 @@ fn main() {
     let indices = db.collection("test_collect.wef").unwrap().get_indexes().unwrap();
 
     println!("indices {:?}", indices);
+
+    let delete_one_result = db
+        .collection("test_collect.wef")
+        .unwrap()
+        .delete_one(&json!(
+            {
+                "age": 299
+            }
+        ))
+        .unwrap();
+
+    println!("delete one result {:?}", delete_one_result);
+
+    match db.collection("test_collect.wef").unwrap().find_one(
+        &json!(
+            {
+                "_id": delete_one_result.unwrap().id
+            }
+        ),
+        0,
+    ) {
+        Ok(r) => {
+            println!("verify deletion result {:?}", r);
+        }
+        Err(e) => {
+            println!("verify deletion error {:?}", e);
+        }
+    };
 }
