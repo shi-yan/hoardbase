@@ -165,6 +165,7 @@ impl<const H: bool, const L: bool, const E: bool, const C: bool> CollectionTrait
         let where_str: String = QueryTranslator {}.query_document(&query, &mut params).unwrap();
         //println!("where_str {}", &where_str);
         let conn = self.connection.borrow_mut();
+        // an alternative solution is SQLITE_ENABLE_UPDATE_DELETE_LIMIT
         let mut stmt = conn.prepare_cached(&format!("DELETE FROM [{}] WHERE _id = (SELECT _id FROM [{}] {} LIMIT 1) RETURNING *;", &self.table_name, &self.table_name, if where_str.len() > 0 { format!("WHERE {}", &where_str) } else { String::from("") })).unwrap();
 
         match stmt.query_row(params_from_iter(params.iter()), |row| {
