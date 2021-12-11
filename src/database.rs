@@ -1,10 +1,11 @@
 use crate::collection::Collection;
+use crate::collection::CollectionTrait;
 use bson::Bson;
+use sha1::{Digest, Sha1};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
-use sha1::{Sha1, Digest};
 
 #[derive(Clone, Debug)]
 pub struct Config {
@@ -57,7 +58,34 @@ impl Config {
 pub struct Database {
     config: Config,
     connection: std::rc::Rc<std::cell::RefCell<rusqlite::Connection>>,
-    collections: HashMap<String, std::rc::Rc<std::cell::RefCell<Collection>>>,
+    collections: HashMap<String, std::rc::Rc<std::cell::RefCell<dyn CollectionTrait>>>,
+}
+
+#[inline(always)]
+fn create_collection_by_config(config: &Config, name: &str, connection: &std::rc::Rc<std::cell::RefCell<rusqlite::Connection>>, table_name: &str) -> std::rc::Rc<RefCell<dyn CollectionTrait>> {
+    match (config.should_hash_document, config.should_log_last_modified) {
+        (true, true) => std::rc::Rc::new(RefCell::new(Collection::<true, true, false, false> {
+            name: name.to_string(),
+            connection: connection.clone(),
+            table_name: table_name.to_string(),
+        })),
+
+        (true, false) => std::rc::Rc::new(RefCell::new(Collection::<true, false, false, false> {
+            name: name.to_string(),
+            connection: connection.clone(),
+            table_name: table_name.to_string(),
+        })),
+        (false, false) => std::rc::Rc::new(RefCell::new(Collection::<false, false, false, false> {
+            name: name.to_string(),
+            connection: connection.clone(),
+            table_name: table_name.to_string(),
+        })),
+        (false, true) => std::rc::Rc::new(RefCell::new(Collection::<false, true, false, false> {
+            name: name.to_string(),
+            connection: connection.clone(),
+            table_name: table_name.to_string(),
+        })),
+    }
 }
 
 impl Database {
@@ -143,7 +171,6 @@ impl Database {
         })
         .unwrap();
 
-
         conn.create_scalar_function("sha1", 1, rusqlite::functions::FunctionFlags::SQLITE_UTF8 | rusqlite::functions::FunctionFlags::SQLITE_DETERMINISTIC, move |ctx| {
             assert_eq!(ctx.len(), 1, "called with unexpected number of arguments");
 
@@ -181,22 +208,14 @@ impl Database {
 
                 println!("{} {}", collection, table_name);
 
-                self.collections.insert(
-                    collection.to_string(),
-                    std::rc::Rc::new(std::cell::RefCell::new(Collection {
-                        name: collection.to_string(),
-                        config: self.config.clone(),
-                        connection: self.connection.clone(),
-                        table_name: table_name.to_string(),
-                    })),
-                );
+                self.collections.insert(collection.to_string(), create_collection_by_config(&self.config, &collection, &self.connection, &table_name));
             } else {
                 break;
             }
         }
     }
 
-    pub fn create_collection(&mut self, collection_name: &str) -> Result<std::cell::RefMut<Collection>, &str> {
+    pub fn create_collection(&mut self, collection_name: &str) -> Result<std::cell::RefMut<dyn CollectionTrait>, &str> {
         if self.collections.contains_key(collection_name) {
             Ok(self.collections.get(collection_name).clone().unwrap().borrow_mut())
         } else {
@@ -227,20 +246,14 @@ impl Database {
                 stmt.execute(&[collection_name, "0", collection_name]).unwrap();
             }
             tx.commit().unwrap();
-            self.collections.insert(
-                collection_name.to_string(),
-                std::rc::Rc::new(std::cell::RefCell::new(Collection {
-                    name: collection_name.to_string(),
-                    config: self.config.clone(),
-                    connection: self.connection.clone(),
-                    table_name: collection_name.to_string(),
-                })),
-            );
+
+            self.collections.insert(collection_name.to_string(), create_collection_by_config(&self.config, &collection_name, &self.connection, &collection_name));
+
             Ok(self.collections.get(collection_name).clone().unwrap().borrow_mut())
         }
     }
 
-    pub fn collection(&mut self, collection_name: &str) -> Result<std::cell::RefMut<Collection>, &str> {
+    pub fn collection(&mut self, collection_name: &str) -> Result<std::cell::RefMut<dyn CollectionTrait>, &str> {
         if self.collections.contains_key(collection_name) {
             Ok(self.collections.get(collection_name).clone().unwrap().borrow_mut())
         } else {
@@ -248,7 +261,7 @@ impl Database {
         }
     }
 
-    pub fn list_collections(&self) -> Vec<&std::rc::Rc<std::cell::RefCell<Collection>>> {
+    pub fn list_collections(&self) -> Vec<&std::rc::Rc<std::cell::RefCell<dyn CollectionTrait>>> {
         let mut collections = Vec::new();
         for collection in self.collections.values() {
             collections.push(collection);

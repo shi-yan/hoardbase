@@ -28,7 +28,7 @@ fn main() {
     let collections = db.list_collections();
 
     for coll in collections {
-        println!("{}", coll.borrow().name);
+        println!("{}", coll.borrow().get_name());
     }
     
     for age in 18..300 {
