@@ -11,8 +11,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::rc::Weak;
 
-use crate::query_translator::QueryTranslator;
 use crate::database::DatabaseInternal;
+use crate::query_translator::QueryTranslator;
 
 fn translate_index_config(config: &serde_json::Value, scope: &str, fields: &mut Vec<(String, i8)>) -> std::result::Result<(), &'static str> {
     if config.is_object() {
@@ -46,18 +46,14 @@ pub struct Collection<const H: bool, const L: bool, const E: bool, const C: bool
 
 #[macro_export]
 macro_rules! search_option {
-    // The pattern for a single `eval`
-    ($l:expr) => 
-        {
-            &Some(*SearchOption::default().limit($l))
-        };
+    ($l:expr) => {
+        &Some(*SearchOption::default().limit($l))
+    };
 
-    // Decompose multiple `eval`s recursively
     ($l:expr, $s:expr) => {
         &Some(*SearchOption::default().limit($l).skip($s))
     };
 }
-
 
 #[derive(Debug, Clone, Copy)]
 pub struct SearchOption {
@@ -81,7 +77,6 @@ impl SearchOption {
     }
 }
 
-
 #[derive(Debug, Clone)]
 pub struct Record {
     pub id: i64,
@@ -97,8 +92,7 @@ impl std::fmt::Display for Record {
 }
 
 pub trait CollectionTrait {
-    fn find(&mut self, query: &serde_json::Value, options: &Option<SearchOption>, f:&mut dyn FnMut(&Record) -> std::result::Result<(), &'static str> ) -> std::result::Result<(), &str> ;
-    
+    fn find(&mut self, query: &serde_json::Value, options: &Option<SearchOption>, f: &mut dyn FnMut(&Record) -> std::result::Result<(), &'static str>) -> std::result::Result<(), &str>;
     fn get_name(&self) -> &str;
     fn get_table_name(&self) -> &str;
 
@@ -131,12 +125,11 @@ pub trait CollectionTrait {
 }
 
 impl<const H: bool, const L: bool, const E: bool, const C: bool> CollectionTrait for Collection<H, L, E, C> {
-    fn find(&mut self, query: &serde_json::Value, options: &Option<SearchOption>, f:&mut dyn FnMut(&Record) -> std::result::Result<(), &'static str> ) -> std::result::Result<(), &str> 
-    {
+    fn find(&mut self, query: &serde_json::Value, options: &Option<SearchOption>, f: &mut dyn FnMut(&Record) -> std::result::Result<(), &'static str>) -> std::result::Result<(), &str> {
         println!("call find for collection {}", self.name);
 
         let mut params = Vec::<rusqlite::types::Value>::new();
-        let where_str : String = QueryTranslator {}.query_document(&query, &mut params).unwrap();
+        let where_str: String = QueryTranslator {}.query_document(&query, &mut params).unwrap();
 
         let mut option_str = String::new();
 
@@ -182,14 +175,12 @@ impl<const H: bool, const L: bool, const E: bool, const C: bool> CollectionTrait
                     }
                 };
                 f(&record).unwrap();
-
             } else {
                 break;
             }
         }
 
         Ok(())
-
     }
 
     fn count_document(&mut self, query: &serde_json::Value, options: &Option<SearchOption>) -> std::result::Result<i64, &str> {
@@ -252,7 +243,10 @@ impl<const H: bool, const L: bool, const E: bool, const C: bool> CollectionTrait
         let db_internal = self.db.upgrade().unwrap();
         let mut conn = db_internal.borrow_mut();
         // an alternative solution is SQLITE_ENABLE_UPDATE_DELETE_LIMIT
-        let mut stmt = conn.connection.prepare_cached(&format!("DELETE FROM [{}] WHERE _id = (SELECT _id FROM [{}] {} LIMIT 1) RETURNING *;", &self.table_name, &self.table_name, if where_str.len() > 0 { format!("WHERE {}", &where_str) } else { String::from("") })).unwrap();
+        let mut stmt = conn
+            .connection
+            .prepare_cached(&format!("DELETE FROM [{}] WHERE _id = (SELECT _id FROM [{}] {} LIMIT 1) RETURNING *;", &self.table_name, &self.table_name, if where_str.len() > 0 { format!("WHERE {}", &where_str) } else { String::from("") }))
+            .unwrap();
 
         match stmt.query_row(params_from_iter(params.iter()), |row| {
             let id = row.get::<_, i64>(0).unwrap();
@@ -324,7 +318,8 @@ impl<const H: bool, const L: bool, const E: bool, const C: bool> CollectionTrait
         //println!("where_str {}", &where_str);
         let db_internal = self.db.upgrade().unwrap();
         let mut conn = db_internal.borrow_mut();
-        let mut stmt = conn.connection
+        let mut stmt = conn
+            .connection
             .prepare_cached(&format!("SELECT * FROM [{}] {} LIMIT 1 {};", &self.table_name, if where_str.len() > 0 { format!("WHERE {}", &where_str) } else { String::from("") }, if skip != 0 { format!("OFFSET {}", skip) } else { String::from("") }))
             .unwrap();
 

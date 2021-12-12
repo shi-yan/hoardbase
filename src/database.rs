@@ -16,11 +16,7 @@ pub struct DatabaseConfig {
 
 impl DatabaseConfig {
     pub fn new(path: &str) -> Self {
-        DatabaseConfig {
-            path: String::from(path),
-            should_trace: false,
-            should_profile: false
-        }
+        DatabaseConfig { path: String::from(path), should_trace: false, should_profile: false }
     }
 
     pub fn trace<'a>(&'a mut self, arg: bool) -> &'a mut DatabaseConfig {
@@ -33,7 +29,6 @@ impl DatabaseConfig {
         self
     }
 }
-
 
 #[derive(Clone, Debug)]
 pub struct CollectionConfig {
@@ -92,7 +87,6 @@ macro_rules! process_record {
     };
 }
 
-
 #[inline(always)]
 fn create_collection_by_config(config: &CollectionConfig, name: &str, internal: &std::rc::Weak<std::cell::RefCell<DatabaseInternal>>, table_name: &str) -> std::rc::Rc<RefCell<dyn CollectionTrait>> {
     match (config.should_hash_document, config.should_log_last_modified) {
@@ -125,10 +119,7 @@ impl Database {
         if let Ok(conn) = rusqlite::Connection::open(config.path.clone()) {
             let mut connection = Database {
                 config: config.clone(),
-                internal: Rc::new(RefCell::new(DatabaseInternal {
-                    transaction_buffer: None,
-                    connection: conn,
-                })),
+                internal: Rc::new(RefCell::new(DatabaseInternal { transaction_buffer: None, connection: conn })),
                 collections: HashMap::new(),
             };
             connection.init();
@@ -157,65 +148,67 @@ impl Database {
             }));
         }
 
-        conn.connection.create_scalar_function("json_field", 2, rusqlite::functions::FunctionFlags::SQLITE_UTF8 | rusqlite::functions::FunctionFlags::SQLITE_DETERMINISTIC, move |ctx| {
-            assert_eq!(ctx.len(), 2, "called with unexpected number of arguments");
+        conn.connection
+            .create_scalar_function("json_field", 2, rusqlite::functions::FunctionFlags::SQLITE_UTF8 | rusqlite::functions::FunctionFlags::SQLITE_DETERMINISTIC, move |ctx| {
+                assert_eq!(ctx.len(), 2, "called with unexpected number of arguments");
 
-            let field_name = ctx.get_raw(0).as_str().unwrap();
-            let blob = ctx.get_raw(1).as_blob().unwrap();
+                let field_name = ctx.get_raw(0).as_str().unwrap();
+                let blob = ctx.get_raw(1).as_blob().unwrap();
 
-            let mut doc: bson::Bson = bson::from_reader(blob).unwrap();
+                let mut doc: bson::Bson = bson::from_reader(blob).unwrap();
 
-            let split = field_name.split(".");
+                let split = field_name.split(".");
 
-            for part in split {
-                if let bson::Bson::Document(inner_doc) = doc {
-                    if let Some(bson_doc) = inner_doc.get(part) {
-                        doc = bson_doc.clone();
+                for part in split {
+                    if let bson::Bson::Document(inner_doc) = doc {
+                        if let Some(bson_doc) = inner_doc.get(part) {
+                            doc = bson_doc.clone();
+                        } else {
+                            return Ok(Some(rusqlite::types::Value::from(rusqlite::types::Null)));
+                        }
                     } else {
                         return Ok(Some(rusqlite::types::Value::from(rusqlite::types::Null)));
                     }
-                } else {
-                    return Ok(Some(rusqlite::types::Value::from(rusqlite::types::Null)));
                 }
-            }
 
-            match doc {
-                bson::Bson::Double(f) => Ok(Some(rusqlite::types::Value::from(f))),
-                bson::Bson::String(string) => Ok(Some(rusqlite::types::Value::from(string.clone()))),
-                bson::Bson::Array(_array) => Ok(Some(rusqlite::types::Value::from(rusqlite::types::Null))),
-                bson::Bson::Document(_doc) => Ok(Some(rusqlite::types::Value::from(rusqlite::types::Null))),
-                bson::Bson::Boolean(boolean) => Ok(Some(rusqlite::types::Value::from(boolean))),
-                bson::Bson::Null => Ok(Some(rusqlite::types::Value::from(rusqlite::types::Null))),
-                bson::Bson::RegularExpression(regex) => Ok(Some(rusqlite::types::Value::from(rusqlite::types::Null))),
-                bson::Bson::Int32(i) => Ok(Some(rusqlite::types::Value::from(i))),
-                bson::Bson::Int64(i) => Ok(Some(rusqlite::types::Value::from(i))),
-                bson::Bson::Timestamp(t) => {
-                    let mut integer: i64 = t.increment.into();
-                    integer <<= 32;
-                    let time: i64 = t.time.into();
-                    integer += time;
-                    Ok(Some(rusqlite::types::Value::from(integer)))
+                match doc {
+                    bson::Bson::Double(f) => Ok(Some(rusqlite::types::Value::from(f))),
+                    bson::Bson::String(string) => Ok(Some(rusqlite::types::Value::from(string.clone()))),
+                    bson::Bson::Array(_array) => Ok(Some(rusqlite::types::Value::from(rusqlite::types::Null))),
+                    bson::Bson::Document(_doc) => Ok(Some(rusqlite::types::Value::from(rusqlite::types::Null))),
+                    bson::Bson::Boolean(boolean) => Ok(Some(rusqlite::types::Value::from(boolean))),
+                    bson::Bson::Null => Ok(Some(rusqlite::types::Value::from(rusqlite::types::Null))),
+                    bson::Bson::RegularExpression(regex) => Ok(Some(rusqlite::types::Value::from(rusqlite::types::Null))),
+                    bson::Bson::Int32(i) => Ok(Some(rusqlite::types::Value::from(i))),
+                    bson::Bson::Int64(i) => Ok(Some(rusqlite::types::Value::from(i))),
+                    bson::Bson::Timestamp(t) => {
+                        let mut integer: i64 = t.increment.into();
+                        integer <<= 32;
+                        let time: i64 = t.time.into();
+                        integer += time;
+                        Ok(Some(rusqlite::types::Value::from(integer)))
+                    }
+                    bson::Bson::Binary(t) => Ok(Some(rusqlite::types::Value::from(t.bytes.clone()))),
+                    bson::Bson::ObjectId(id) => Ok(Some(rusqlite::types::Value::from(id.to_hex()))),
+                    bson::Bson::DateTime(dt) => Ok(Some(rusqlite::types::Value::from(dt.timestamp_millis()))),
+                    bson::Bson::Decimal128(d) => Ok(Some(rusqlite::types::Value::from(Vec::from(d.bytes().clone())))),
+                    _ => Ok(Some(rusqlite::types::Value::from(rusqlite::types::Null))),
                 }
-                bson::Bson::Binary(t) => Ok(Some(rusqlite::types::Value::from(t.bytes.clone()))),
-                bson::Bson::ObjectId(id) => Ok(Some(rusqlite::types::Value::from(id.to_hex()))),
-                bson::Bson::DateTime(dt) => Ok(Some(rusqlite::types::Value::from(dt.timestamp_millis()))),
-                bson::Bson::Decimal128(d) => Ok(Some(rusqlite::types::Value::from(Vec::from(d.bytes().clone())))),
-                _ => Ok(Some(rusqlite::types::Value::from(rusqlite::types::Null))),
-            }
-        })
-        .unwrap();
+            })
+            .unwrap();
 
-        conn.connection.create_scalar_function("sha1", 1, rusqlite::functions::FunctionFlags::SQLITE_UTF8 | rusqlite::functions::FunctionFlags::SQLITE_DETERMINISTIC, move |ctx| {
-            assert_eq!(ctx.len(), 1, "called with unexpected number of arguments");
+        conn.connection
+            .create_scalar_function("sha1", 1, rusqlite::functions::FunctionFlags::SQLITE_UTF8 | rusqlite::functions::FunctionFlags::SQLITE_DETERMINISTIC, move |ctx| {
+                assert_eq!(ctx.len(), 1, "called with unexpected number of arguments");
 
-            let blob = ctx.get_raw(0).as_blob().unwrap();
-            let mut hasher = Sha1::new();
-            hasher.update(blob);
-            let result = hasher.finalize();
-            let hex_string = hex::encode(result.as_slice());
-            Ok(Some(hex_string))
-        })
-        .unwrap();
+                let blob = ctx.get_raw(0).as_blob().unwrap();
+                let mut hasher = Sha1::new();
+                hasher.update(blob);
+                let result = hasher.finalize();
+                let hex_string = hex::encode(result.as_slice());
+                Ok(Some(hex_string))
+            })
+            .unwrap();
 
         let tx = conn.connection.transaction().unwrap();
         {
@@ -249,9 +242,9 @@ impl Database {
                 let compress: bool = row.get(7).unwrap();
 
                 let collection_config: CollectionConfig = CollectionConfig {
-                     should_hash_document: hash_document,
-                     should_log_last_modified: log_last_modified,
-                     should_hash_unique: false,
+                    should_hash_document: hash_document,
+                    should_log_last_modified: log_last_modified,
+                    should_hash_unique: false,
                 };
 
                 println!("{} {}", collection, table_name);
@@ -290,17 +283,25 @@ impl Database {
                     tx.execute(&format!("CREATE {} INDEX IF NOT EXISTS _hash ON [{}](_hash);", if config.should_hash_unique { "UNIQUE" } else { "" }, collection_name), []).unwrap();
                 }
 
-                let mut stmt = tx.prepare_cached("INSERT INTO _hoardbase (collection ,type, table_name,
+                let mut stmt = tx
+                    .prepare_cached(
+                        "INSERT INTO _hoardbase (collection ,type, table_name,
                     hash_document,
                     log_last_modified,
                     encrypt,
-                    compress) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) ON CONFLICT(collection) DO NOTHING").unwrap();
-                stmt.execute([rusqlite::types::Value::Text(String::from(collection_name)), 
-                rusqlite::types::Value::Integer(0),
-                rusqlite::types::Value::Text( String::from(collection_name)),
-                rusqlite::types::Value::from( config.should_hash_document ),
-                rusqlite::types::Value::from( config.should_log_last_modified), 
-                rusqlite::types::Value::from(false), rusqlite::types::Value::from(false)  ]).unwrap();
+                    compress) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) ON CONFLICT(collection) DO NOTHING",
+                    )
+                    .unwrap();
+                stmt.execute([
+                    rusqlite::types::Value::Text(String::from(collection_name)),
+                    rusqlite::types::Value::Integer(0),
+                    rusqlite::types::Value::Text(String::from(collection_name)),
+                    rusqlite::types::Value::from(config.should_hash_document),
+                    rusqlite::types::Value::from(config.should_log_last_modified),
+                    rusqlite::types::Value::from(false),
+                    rusqlite::types::Value::from(false),
+                ])
+                .unwrap();
             }
             tx.commit().unwrap();
 
