@@ -9,8 +9,10 @@ use serde_json::Value;
 use slugify::slugify;
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::rc::Weak;
 
 use crate::query_translator::QueryTranslator;
+use crate::database::DatabaseInternal;
 
 fn translate_index_config(config: &serde_json::Value, scope: &str, fields: &mut Vec<(String, i8)>) -> std::result::Result<(), &'static str> {
     if config.is_object() {
@@ -37,8 +39,8 @@ fn translate_index_config(config: &serde_json::Value, scope: &str, fields: &mut 
 }
 
 pub struct Collection<const H: bool, const L: bool, const E: bool, const C: bool> {
-    pub connection: std::rc::Rc<std::cell::RefCell<rusqlite::Connection>>,
     pub name: String,
+    pub db: Weak<RefCell<DatabaseInternal>>,
     pub table_name: String,
 }
 
@@ -82,7 +84,6 @@ pub trait CollectionTrait {
     fn drop(&mut self);
 
     fn drop_index(&mut self);
-    fn ensure_index(&mut self);
 
     fn find_one(&mut self, query: &serde_json::Value, skip: i64) -> std::result::Result<Record, &str>;
     fn find_one_and_delete(&mut self);
@@ -97,7 +98,6 @@ pub trait CollectionTrait {
 
     fn reindex(&mut self);
     fn replace_one(&mut self);
-    fn remove(&mut self);
 
     fn update_one(&mut self);
     fn update_many(&mut self);
@@ -117,9 +117,9 @@ impl<const H: bool, const L: bool, const E: bool, const C: bool> CollectionTrait
         if let Some(opt) = options {
             option_str = format!("LIMIT {} OFFSET {}", opt.limit, opt.skip);
         }
-
-        let conn = self.connection.borrow_mut();
-        let mut stmt = conn.prepare_cached(&format!("SELECT COUNT(1) FROM [{}] {} {};", &self.table_name, if where_str.len() > 0 { format!("WHERE {}", &where_str) } else { String::from("") }, option_str)).unwrap();
+        let db_internal = self.db.upgrade().unwrap();
+        let mut conn = db_internal.borrow_mut();
+        let mut stmt = conn.connection.prepare_cached(&format!("SELECT COUNT(1) FROM [{}] {} {};", &self.table_name, if where_str.len() > 0 { format!("WHERE {}", &where_str) } else { String::from("") }, option_str)).unwrap();
         let count = stmt.query_row(params_from_iter(params.iter()), |row| Ok(row.get::<_, i64>(0).unwrap())).unwrap();
         Ok(count)
     }
@@ -133,7 +133,8 @@ impl<const H: bool, const L: bool, const E: bool, const C: bool> CollectionTrait
         if let Err(e) = result {
             return Err(String::from(e));
         }
-        let conn = self.connection.borrow_mut();
+        let db_internal = self.db.upgrade().unwrap();
+        let mut conn = db_internal.borrow_mut();
         let mut index_name = String::new();
         let mut config_str = String::new();
         for field in fields {
@@ -147,7 +148,7 @@ impl<const H: bool, const L: bool, const E: bool, const C: bool> CollectionTrait
 
         index_name = slugify!(index_name.as_str(), separator = "_");
 
-        match conn.execute(&format!("CREATE {} INDEX IF NOT EXISTS {} ON [{}]({});", if is_unique { "UNIQUE" } else { "" }, index_name, &self.table_name, &config_str), []) {
+        match conn.connection.execute(&format!("CREATE {} INDEX IF NOT EXISTS {} ON [{}]({});", if is_unique { "UNIQUE" } else { "" }, index_name, &self.table_name, &config_str), []) {
             Ok(_) => Ok(()),
             Err(e) => Err(e.to_string()),
         }
@@ -164,9 +165,10 @@ impl<const H: bool, const L: bool, const E: bool, const C: bool> CollectionTrait
         let mut params = Vec::<rusqlite::types::Value>::new();
         let where_str: String = QueryTranslator {}.query_document(&query, &mut params).unwrap();
         //println!("where_str {}", &where_str);
-        let conn = self.connection.borrow_mut();
+        let db_internal = self.db.upgrade().unwrap();
+        let mut conn = db_internal.borrow_mut();
         // an alternative solution is SQLITE_ENABLE_UPDATE_DELETE_LIMIT
-        let mut stmt = conn.prepare_cached(&format!("DELETE FROM [{}] WHERE _id = (SELECT _id FROM [{}] {} LIMIT 1) RETURNING *;", &self.table_name, &self.table_name, if where_str.len() > 0 { format!("WHERE {}", &where_str) } else { String::from("") })).unwrap();
+        let mut stmt = conn.connection.prepare_cached(&format!("DELETE FROM [{}] WHERE _id = (SELECT _id FROM [{}] {} LIMIT 1) RETURNING *;", &self.table_name, &self.table_name, if where_str.len() > 0 { format!("WHERE {}", &where_str) } else { String::from("") })).unwrap();
 
         match stmt.query_row(params_from_iter(params.iter()), |row| {
             let id = row.get::<_, i64>(0).unwrap();
@@ -220,8 +222,10 @@ impl<const H: bool, const L: bool, const E: bool, const C: bool> CollectionTrait
             option_str = format!("LIMIT {} OFFSET {}", opt.limit, opt.skip);
         }
 
-        let conn = self.connection.borrow_mut();
-        let mut stmt = conn.prepare_cached(&format!("SELECT COUNT(DISTINCT json_field('{}', raw)) FROM [{}] {} {};", field, &self.table_name, if where_str.len() > 0 { format!("WHERE {}", &where_str) } else { String::from("") }, option_str)).unwrap();
+        let db_internal = self.db.upgrade().unwrap();
+        let mut conn = db_internal.borrow_mut();
+
+        let mut stmt = conn.connection.prepare_cached(&format!("SELECT COUNT(DISTINCT json_field('{}', raw)) FROM [{}] {} {};", field, &self.table_name, if where_str.len() > 0 { format!("WHERE {}", &where_str) } else { String::from("") }, option_str)).unwrap();
         let count = stmt.query_row(params_from_iter(params.iter()), |row| Ok(row.get::<_, i64>(0).unwrap())).unwrap();
         Ok(count)
     }
@@ -229,14 +233,14 @@ impl<const H: bool, const L: bool, const E: bool, const C: bool> CollectionTrait
     fn drop(&mut self) {}
 
     fn drop_index(&mut self) {}
-    fn ensure_index(&mut self) {}
 
     fn find_one(&mut self, query: &serde_json::Value, skip: i64) -> std::result::Result<Record, &str> {
         let mut params = Vec::<rusqlite::types::Value>::new();
         let where_str: String = QueryTranslator {}.query_document(&query, &mut params).unwrap();
         //println!("where_str {}", &where_str);
-        let conn = self.connection.borrow_mut();
-        let mut stmt = conn
+        let db_internal = self.db.upgrade().unwrap();
+        let mut conn = db_internal.borrow_mut();
+        let mut stmt = conn.connection
             .prepare_cached(&format!("SELECT * FROM [{}] {} LIMIT 1 {};", &self.table_name, if where_str.len() > 0 { format!("WHERE {}", &where_str) } else { String::from("") }, if skip != 0 { format!("OFFSET {}", skip) } else { String::from("") }))
             .unwrap();
 
@@ -285,9 +289,11 @@ impl<const H: bool, const L: bool, const E: bool, const C: bool> CollectionTrait
     fn find_one_and_update(&mut self) {}
     fn find_and_modify(&mut self) {}
     fn get_indexes(&mut self) -> Result<Vec<serde_json::Value>, String> {
-        let conn = self.connection.borrow_mut();
+        let db_internal = self.db.upgrade().unwrap();
+        let mut conn = db_internal.borrow_mut();
+
         println!("{}", format!("SELECT * FROM pragma_index_list('{}');", self.table_name));
-        let mut stmt = conn.prepare(&format!("SELECT * FROM pragma_index_list('{}');", self.table_name)).unwrap();
+        let mut stmt = conn.connection.prepare(&format!("SELECT * FROM pragma_index_list('{}');", self.table_name)).unwrap();
         let mut rows = stmt.query([]).unwrap();
 
         let mut result: Vec<serde_json::Value> = Vec::new();
@@ -311,9 +317,11 @@ impl<const H: bool, const L: bool, const E: bool, const C: bool> CollectionTrait
         let bson_doc = bson::ser::to_document(&document).unwrap();
         let mut bytes: Vec<u8> = Vec::new();
         bson_doc.to_writer(&mut bytes).unwrap();
-        let conn = self.connection.borrow_mut();
+        let db_internal = self.db.upgrade().unwrap();
+        let mut conn = db_internal.borrow_mut();
+
         if L {
-            let mut stmt = conn.prepare_cached(&format!("INSERT INTO [{}] (raw, _last_modified) VALUES (?1, datetime('now'))", &self.table_name)).unwrap();
+            let mut stmt = conn.connection.prepare_cached(&format!("INSERT INTO [{}] (raw, _last_modified) VALUES (?1, datetime('now'))", &self.table_name)).unwrap();
             let bytes_ref: &[u8] = bytes.as_ref();
             match stmt.execute(&[bytes_ref]) {
                 Ok(_) => {
@@ -324,7 +332,7 @@ impl<const H: bool, const L: bool, const E: bool, const C: bool> CollectionTrait
                 }
             }
         } else {
-            let mut stmt = conn.prepare_cached(&format!("INSERT INTO [{}] (raw) VALUES (?1)", &self.table_name)).unwrap();
+            let mut stmt = conn.connection.prepare_cached(&format!("INSERT INTO [{}] (raw) VALUES (?1)", &self.table_name)).unwrap();
             let bytes_ref: &[u8] = bytes.as_ref();
             match stmt.execute(&[bytes_ref]) {
                 Ok(_) => {
@@ -341,7 +349,6 @@ impl<const H: bool, const L: bool, const E: bool, const C: bool> CollectionTrait
 
     fn reindex(&mut self) {}
     fn replace_one(&mut self) {}
-    fn remove(&mut self) {}
 
     fn update_one(&mut self) {}
     fn update_many(&mut self) {}

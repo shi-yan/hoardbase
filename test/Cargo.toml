@@ -1,5 +1,5 @@
 [package]
-name = "hoardbase"
+name = "hoardbase_test"
 version = "0.1.0"
 edition = "2021"
 default-run = "core"
@@ -18,10 +18,7 @@ clap = "2.34.0"
 cursive_tree_view = "0.7"
 cursive_table_view = "0.13.3"
 chrono = "0.4.19"
-
-[[bin]]
-name = "hoardmin"
-path = "src/hoardmin.rs"
+ouroboros = "0.14.0"
 
 [[bin]]
 name = "core"

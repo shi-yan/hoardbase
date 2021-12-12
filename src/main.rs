@@ -11,16 +11,18 @@ mod query_translator;
 fn main() {
     println!("Hello, world!");
 
-    let mut config = database::Config::new("test.db");
+    let mut config = database::DatabaseConfig::new("test.db");
     config.trace(true);
     config.profile(true);
-    config.hash_document(true);
-    config.log_last_modified(true);
 
     let mut db = database::Database::open(&config).unwrap();
 
     {
-        let mut collection = db.create_collection("test_collect.wef").unwrap();
+        let mut ccol: database::CollectionConfig = database::CollectionConfig::default();
+        ccol.hash_document(true);
+        ccol.log_last_modified(true);
+        
+        let mut collection = db.create_collection("test_collect.wef", &ccol).unwrap();
         collection.create_index(&json!({"age": 1}), false).unwrap();
     }
 
