@@ -8,6 +8,8 @@ mod collection;
 mod database;
 mod query_translator;
 
+use collection::SearchOption;
+
 fn main() {
     println!("Hello, world!");
 
@@ -26,7 +28,7 @@ fn main() {
         collection.create_index(&json!({"age": 1}), false).unwrap();
     }
 
-    db.collection("test_collect.wef").unwrap().find();
+    //db.collection("test_collect.wef").unwrap().find();
 
     let collections = db.list_collections();
 
@@ -121,7 +123,7 @@ fn main() {
 
     println!("delete one result {:?}", delete_one_result);
 
-    match db.collection("test_collect.wef").unwrap().find_one(
+   /* match db.collection("test_collect.wef").unwrap().find_one(
         &json!(
             {
                 "_id": delete_one_result.unwrap().id
@@ -135,5 +137,14 @@ fn main() {
         Err(e) => {
             println!("verify deletion error {:?}", e);
         }
-    };
+    };*/
+    let mut records = Vec::<collection::Record>::new();
+    let r = &mut records; //&mut move |record| -> std::result::Result<(), &'static str>
+    db.collection("test_collect.wef").unwrap().find(&json!({"age":279}), search_option!(10),  process_record!( record => {
+        println!("call back {:?}", record);
+        r.push(record.clone());
+        Ok(())
+    })).unwrap();
+
+    println!("records {:?}", records);
 }

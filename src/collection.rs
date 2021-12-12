@@ -44,6 +44,22 @@ pub struct Collection<const H: bool, const L: bool, const E: bool, const C: bool
     pub table_name: String,
 }
 
+#[macro_export]
+macro_rules! search_option {
+    // The pattern for a single `eval`
+    ($l:expr) => 
+        {
+            &Some(*SearchOption::default().limit($l))
+        };
+
+    // Decompose multiple `eval`s recursively
+    ($l:expr, $s:expr) => {
+        &Some(*SearchOption::default().limit($l).skip($s))
+    };
+}
+
+
+#[derive(Debug, Clone, Copy)]
 pub struct SearchOption {
     pub limit: i64,
     pub skip: i64,
@@ -53,7 +69,18 @@ impl SearchOption {
     pub fn default() -> Self {
         SearchOption { limit: -1, skip: 0 }
     }
+
+    pub fn limit<'a>(&'a mut self, arg: i64) -> &'a mut SearchOption {
+        self.limit = arg;
+        self
+    }
+
+    pub fn skip<'a>(&'a mut self, args: i64) -> &'a mut SearchOption {
+        self.skip = args;
+        self
+    }
 }
+
 
 #[derive(Debug, Clone)]
 pub struct Record {
@@ -70,8 +97,8 @@ impl std::fmt::Display for Record {
 }
 
 pub trait CollectionTrait {
-    fn find(&mut self);
-
+    fn find(&mut self, query: &serde_json::Value, options: &Option<SearchOption>, f:&mut dyn FnMut(&Record) -> std::result::Result<(), &'static str> ) -> std::result::Result<(), &str> ;
+    
     fn get_name(&self) -> &str;
     fn get_table_name(&self) -> &str;
 
@@ -104,8 +131,65 @@ pub trait CollectionTrait {
 }
 
 impl<const H: bool, const L: bool, const E: bool, const C: bool> CollectionTrait for Collection<H, L, E, C> {
-    fn find(&mut self) {
+    fn find(&mut self, query: &serde_json::Value, options: &Option<SearchOption>, f:&mut dyn FnMut(&Record) -> std::result::Result<(), &'static str> ) -> std::result::Result<(), &str> 
+    {
         println!("call find for collection {}", self.name);
+
+        let mut params = Vec::<rusqlite::types::Value>::new();
+        let where_str : String = QueryTranslator {}.query_document(&query, &mut params).unwrap();
+
+        let mut option_str = String::new();
+
+        if let Some(opt) = options {
+            option_str = format!("LIMIT {} OFFSET {}", opt.limit, opt.skip);
+        }
+
+        let db_internal = self.db.upgrade().unwrap();
+        let conn = db_internal.borrow_mut();
+        let mut stmt = conn.connection.prepare_cached(&format!("SELECT * FROM [{}] {} {};", &self.table_name, if where_str.len() > 0 { format!("WHERE {}", &where_str) } else { String::from("") }, option_str)).unwrap();
+
+        let mut rows = stmt.query(params_from_iter(params.iter())).unwrap();
+
+        while let Ok(row_result) = rows.next() {
+            if let Some(row) = row_result {
+                let id = row.get::<_, i64>(0).unwrap();
+                let bson_doc: bson::Document = bson::from_reader(row.get::<_, Vec<u8>>(1).unwrap().as_slice()).unwrap();
+                let json_doc: serde_json::Value = bson::Bson::from(&bson_doc).into();
+                let record = match (H, L) {
+                    (false, false) => Record {
+                        id: id,
+                        data: json_doc,
+                        hash: String::new(),
+                        last_modified: Utc.timestamp(0, 0),
+                    },
+                    (true, false) => {
+                        let hash = row.get::<_, String>(2).unwrap();
+                        Record { id: id, data: json_doc, hash: hash, last_modified: Utc.timestamp(0, 0) }
+                    }
+                    (true, true) => {
+                        let hash = row.get::<_, String>(2).unwrap();
+                        let last_modified = row.get::<_, DateTime<Utc>>(3).unwrap();
+                        Record { id: id, data: json_doc, hash: hash, last_modified: last_modified }
+                    }
+                    (false, true) => {
+                        let last_modified = row.get::<_, DateTime<Utc>>(2).unwrap();
+                        Record {
+                            id: id,
+                            data: json_doc,
+                            hash: String::new(),
+                            last_modified: last_modified,
+                        }
+                    }
+                };
+                f(&record).unwrap();
+
+            } else {
+                break;
+            }
+        }
+
+        Ok(())
+
     }
 
     fn count_document(&mut self, query: &serde_json::Value, options: &Option<SearchOption>) -> std::result::Result<i64, &str> {

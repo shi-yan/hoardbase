@@ -83,6 +83,16 @@ pub struct Database {
     collections: HashMap<String, std::rc::Rc<std::cell::RefCell<dyn CollectionTrait>>>,
 }
 
+#[macro_export]
+macro_rules! process_record {
+    // `()` indicates that the macro takes no argument.
+    ($record: ident=> $body: block) => {
+        // The macro will expand into the contents of this block.
+        &mut move |$record| -> std::result::Result<(), &'static str> { $body }
+    };
+}
+
+
 #[inline(always)]
 fn create_collection_by_config(config: &CollectionConfig, name: &str, internal: &std::rc::Weak<std::cell::RefCell<DatabaseInternal>>, table_name: &str) -> std::rc::Rc<RefCell<dyn CollectionTrait>> {
     match (config.should_hash_document, config.should_log_last_modified) {
