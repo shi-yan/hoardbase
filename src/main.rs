@@ -4,11 +4,13 @@ use std::io::Write;
 #[macro_use]
 extern crate slugify;
 
+mod base;
 mod collection;
 mod database;
 mod query_translator;
+mod transaction;
 
-use collection::SearchOption;
+use base::SearchOption;
 
 fn main() {
     println!("Hello, world!");
@@ -138,7 +140,7 @@ fn main() {
             println!("verify deletion error {:?}", e);
         }
     };*/
-    let mut records = Vec::<collection::Record>::new();
+    let mut records = Vec::<base::Record>::new();
     let r = &mut records; //&mut move |record| -> std::result::Result<(), &'static str>
     db.collection("test_collect.wef").unwrap().find(&json!({"age":279}), search_option!(10),  process_record!( record => {
         println!("call back {:?}", record);
@@ -147,4 +149,14 @@ fn main() {
     })).unwrap();
 
     println!("records {:?}", records);
+
+    let r = db.collection("test_collect.wef").unwrap().delete_many(&json!({"age": 232 })).unwrap();
+
+    println!("delete many result {:?}", r);
+
+    let dr = db.collection("test_collect.wef").unwrap().drop_index("tewa").unwrap();
+
+    println!("drop index result {:?}", dr);
+
+    db.collection("test_collect.wef").unwrap().find_one_and_replace(&json!({"age": 221}), 0);
 }

@@ -12,7 +12,10 @@ use std::rc::Rc;
 use std::rc::Weak;
 
 use crate::database::DatabaseInternal;
+use crate::database::SqliteFunctions;
 use crate::query_translator::QueryTranslator;
+use fallible_streaming_iterator::FallibleStreamingIterator;
+use crate::base::*;
 
 fn translate_index_config(config: &serde_json::Value, scope: &str, fields: &mut Vec<(String, i8)>) -> std::result::Result<(), &'static str> {
     if config.is_object() {
@@ -38,111 +41,30 @@ fn translate_index_config(config: &serde_json::Value, scope: &str, fields: &mut 
     }
 }
 
-pub struct Collection<const H: bool, const L: bool, const E: bool, const C: bool> {
+pub struct Collection<'a, const H: bool, const L: bool, const E: bool, const C: bool> {
     pub name: String,
-    pub db: Weak<RefCell<DatabaseInternal>>,
+    pub db: Weak<RefCell<(dyn SqliteFunctions + 'a)>>,
     pub table_name: String,
 }
 
-#[macro_export]
-macro_rules! search_option {
-    ($l:expr) => {
-        &Some(*SearchOption::default().limit($l))
-    };
-
-    ($l:expr, $s:expr) => {
-        &Some(*SearchOption::default().limit($l).skip($s))
-    };
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct SearchOption {
-    pub limit: i64,
-    pub skip: i64,
-}
-
-impl SearchOption {
-    pub fn default() -> Self {
-        SearchOption { limit: -1, skip: 0 }
-    }
-
-    pub fn limit<'a>(&'a mut self, arg: i64) -> &'a mut SearchOption {
-        self.limit = arg;
-        self
-    }
-
-    pub fn skip<'a>(&'a mut self, args: i64) -> &'a mut SearchOption {
-        self.skip = args;
-        self
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Record {
-    pub id: i64,
-    pub data: serde_json::Value,
-    pub hash: String,
-    pub last_modified: DateTime<Utc>,
-}
-
-impl std::fmt::Display for Record {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Record {{ id: {}, data: {}, hash: {}, last_modified: {} }}", self.id, self.data, self.hash, self.last_modified)
-    }
-}
-
-pub trait CollectionTrait {
-    fn find(&mut self, query: &serde_json::Value, options: &Option<SearchOption>, f: &mut dyn FnMut(&Record) -> std::result::Result<(), &'static str>) -> std::result::Result<(), &str>;
-    fn get_name(&self) -> &str;
-    fn get_table_name(&self) -> &str;
-
-    fn count_document(&mut self, query: &serde_json::Value, options: &Option<SearchOption>) -> std::result::Result<i64, &str>;
-    fn create_index(&mut self, config: &serde_json::Value, is_unique: bool) -> std::result::Result<(), String>;
-
-    fn delete_one(&mut self, query: &serde_json::Value) -> std::result::Result<Option<Record>, String>;
-    fn delete_many(&mut self);
-    fn distinct(&mut self, field: &str, query: &Option<&serde_json::Value>, options: &Option<SearchOption>) -> std::result::Result<i64, &str>;
-    fn drop(&mut self);
-
-    fn drop_index(&mut self);
-
-    fn find_one(&mut self, query: &serde_json::Value, skip: i64) -> std::result::Result<Record, &str>;
-    fn find_one_and_delete(&mut self);
-    fn find_one_and_replace(&mut self);
-    fn find_one_and_update(&mut self);
-    fn find_and_modify(&mut self);
-    fn get_indexes(&mut self) -> Result<Vec<serde_json::Value>, String>;
-
-    fn insert_one(&mut self, document: &serde_json::Value) -> std::result::Result<(), String>;
-
-    fn insert_many(&mut self);
-
-    fn reindex(&mut self);
-    fn replace_one(&mut self);
-
-    fn update_one(&mut self);
-    fn update_many(&mut self);
-}
-
-impl<const H: bool, const L: bool, const E: bool, const C: bool> CollectionTrait for Collection<H, L, E, C> {
+impl<'a, const H: bool, const L: bool, const E: bool, const C: bool> CollectionTrait for Collection<'a, H, L, E, C> {
     fn find(&mut self, query: &serde_json::Value, options: &Option<SearchOption>, f: &mut dyn FnMut(&Record) -> std::result::Result<(), &'static str>) -> std::result::Result<(), &str> {
-        println!("call find for collection {}", self.name);
-
+        let db_internal = self.db.upgrade().unwrap();
+        let conn = db_internal.borrow_mut();
+       
         let mut params = Vec::<rusqlite::types::Value>::new();
         let where_str: String = QueryTranslator {}.query_document(&query, &mut params).unwrap();
-
+    
         let mut option_str = String::new();
-
+    
         if let Some(opt) = options {
             option_str = format!("LIMIT {} OFFSET {}", opt.limit, opt.skip);
         }
-
-        let db_internal = self.db.upgrade().unwrap();
-        let conn = db_internal.borrow_mut();
-        let mut stmt = conn.connection.prepare_cached(&format!("SELECT * FROM [{}] {} {};", &self.table_name, if where_str.len() > 0 { format!("WHERE {}", &where_str) } else { String::from("") }, option_str)).unwrap();
-
+    
+        let mut stmt = conn.prepare_cached(&format!("SELECT * FROM [{}] {} {};", &self.table_name, if where_str.len() > 0 { format!("WHERE {}", &where_str) } else { String::from("") }, option_str)).unwrap();
+    
         let mut rows = stmt.query(params_from_iter(params.iter())).unwrap();
-
+    
         while let Ok(row_result) = rows.next() {
             if let Some(row) = row_result {
                 let id = row.get::<_, i64>(0).unwrap();
@@ -179,7 +101,7 @@ impl<const H: bool, const L: bool, const E: bool, const C: bool> CollectionTrait
                 break;
             }
         }
-
+    
         Ok(())
     }
 
@@ -193,8 +115,8 @@ impl<const H: bool, const L: bool, const E: bool, const C: bool> CollectionTrait
             option_str = format!("LIMIT {} OFFSET {}", opt.limit, opt.skip);
         }
         let db_internal = self.db.upgrade().unwrap();
-        let mut conn = db_internal.borrow_mut();
-        let mut stmt = conn.connection.prepare_cached(&format!("SELECT COUNT(1) FROM [{}] {} {};", &self.table_name, if where_str.len() > 0 { format!("WHERE {}", &where_str) } else { String::from("") }, option_str)).unwrap();
+        let conn = db_internal.borrow_mut();
+        let mut stmt = conn.prepare_cached(&format!("SELECT COUNT(1) FROM [{}] {} {};", &self.table_name, if where_str.len() > 0 { format!("WHERE {}", &where_str) } else { String::from("") }, option_str)).unwrap();
         let count = stmt.query_row(params_from_iter(params.iter()), |row| Ok(row.get::<_, i64>(0).unwrap())).unwrap();
         Ok(count)
     }
@@ -209,7 +131,7 @@ impl<const H: bool, const L: bool, const E: bool, const C: bool> CollectionTrait
             return Err(String::from(e));
         }
         let db_internal = self.db.upgrade().unwrap();
-        let mut conn = db_internal.borrow_mut();
+        let conn = db_internal.borrow_mut();
         let mut index_name = String::new();
         let mut config_str = String::new();
         for field in fields {
@@ -223,11 +145,12 @@ impl<const H: bool, const L: bool, const E: bool, const C: bool> CollectionTrait
 
         index_name = slugify!(index_name.as_str(), separator = "_");
 
-        match conn.connection.execute(&format!("CREATE {} INDEX IF NOT EXISTS {} ON [{}]({});", if is_unique { "UNIQUE" } else { "" }, index_name, &self.table_name, &config_str), []) {
+        match conn.execute(&format!("CREATE {} INDEX IF NOT EXISTS {} ON [{}]({});", if is_unique { "UNIQUE" } else { "" }, index_name, &self.table_name, &config_str), &[]) {
             Ok(_) => Ok(()),
             Err(e) => Err(e.to_string()),
         }
     }
+
     fn get_name(&self) -> &str {
         self.name.as_str()
     }
@@ -236,56 +159,51 @@ impl<const H: bool, const L: bool, const E: bool, const C: bool> CollectionTrait
         self.table_name.as_str()
     }
 
-    fn delete_one(&mut self, query: &serde_json::Value) -> std::result::Result<Option<Record>, String> {
+    fn delete_one(&mut self, query: &serde_json::Value) -> std::result::Result<usize, String> {
         let mut params = Vec::<rusqlite::types::Value>::new();
         let where_str: String = QueryTranslator {}.query_document(&query, &mut params).unwrap();
         //println!("where_str {}", &where_str);
         let db_internal = self.db.upgrade().unwrap();
-        let mut conn = db_internal.borrow_mut();
+        let conn = db_internal.borrow_mut();
         // an alternative solution is SQLITE_ENABLE_UPDATE_DELETE_LIMIT
-        let mut stmt = conn
-            .connection
-            .prepare_cached(&format!("DELETE FROM [{}] WHERE _id = (SELECT _id FROM [{}] {} LIMIT 1) RETURNING *;", &self.table_name, &self.table_name, if where_str.len() > 0 { format!("WHERE {}", &where_str) } else { String::from("") }))
-            .unwrap();
+        let mut stmt = conn.prepare_cached(&format!("DELETE FROM [{}] WHERE _id = (SELECT _id FROM [{}] {} LIMIT 1);", &self.table_name, &self.table_name, if where_str.len() > 0 { format!("WHERE {}", &where_str) } else { String::from("") })).unwrap();
 
-        match stmt.query_row(params_from_iter(params.iter()), |row| {
-            let id = row.get::<_, i64>(0).unwrap();
-            let bson_doc: bson::Document = bson::from_reader(row.get::<_, Vec<u8>>(1).unwrap().as_slice()).unwrap();
-            let json_doc: serde_json::Value = bson::Bson::from(&bson_doc).into();
-            match (H, L) {
-                (false, false) => Ok(Some(Record {
-                    id: id,
-                    data: json_doc,
-                    hash: String::new(),
-                    last_modified: Utc.timestamp(0, 0),
-                })),
-                (true, false) => {
-                    let hash = row.get::<_, String>(2).unwrap();
-                    Ok(Some(Record { id: id, data: json_doc, hash: hash, last_modified: Utc.timestamp(0, 0) }))
-                }
-                (true, true) => {
-                    let hash = row.get::<_, String>(2).unwrap();
-                    let last_modified = row.get::<_, DateTime<Utc>>(3).unwrap();
-                    Ok(Some(Record { id: id, data: json_doc, hash: hash, last_modified: last_modified }))
-                }
-                (false, true) => {
-                    let last_modified = row.get::<_, DateTime<Utc>>(2).unwrap();
-                    Ok(Some(Record {
-                        id: id,
-                        data: json_doc,
-                        hash: String::new(),
-                        last_modified: last_modified,
-                    }))
-                }
-            }
-        }) {
-            Ok(Some(record)) => Ok(Some(record)),
-            Ok(None) => Ok(None),
-            Err(e) => Err(e.to_string()),
+        match stmt.execute(params_from_iter(params.iter())) {
+            Ok(count) => Ok(count),
+            Err(_) => Err("Error".to_string()),
         }
     }
 
-    fn delete_many(&mut self) {}
+    fn changes(&mut self) -> std::result::Result<i64, String> {
+        let db_internal = self.db.upgrade().unwrap();
+        let conn = db_internal.borrow_mut();
+
+        let mut stmt = conn.prepare_cached("SELECT changes();").unwrap();
+
+        let rows = stmt
+            .query_row([], |row| {
+                let count = row.get::<_, i64>(0).unwrap();
+                Ok(count)
+            })
+            .unwrap();
+
+        Ok(rows)
+    }
+
+    fn delete_many(&mut self, query: &serde_json::Value) -> std::result::Result<usize, String> {
+        let mut params = Vec::<rusqlite::types::Value>::new();
+        let where_str: String = QueryTranslator {}.query_document(&query, &mut params).unwrap();
+        //println!("where_str {}", &where_str);
+        let db_internal = self.db.upgrade().unwrap();
+        let conn = db_internal.borrow_mut();
+        // an alternative solution is SQLITE_ENABLE_UPDATE_DELETE_LIMIT
+
+        let mut stmt = conn.prepare_cached(&format!("DELETE FROM [{}] {};", &self.table_name, if where_str.len() > 0 { format!("WHERE {}", &where_str) } else { String::from("") })).unwrap();
+        match stmt.execute(params_from_iter(params.iter())) {
+            Ok(count) => Ok(count),
+            Err(e) => Err(e.to_string()),
+        }
+    }
 
     fn distinct(&mut self, field: &str, query: &Option<&serde_json::Value>, options: &Option<SearchOption>) -> std::result::Result<i64, &str> {
         //todo implement skip limit
@@ -301,25 +219,30 @@ impl<const H: bool, const L: bool, const E: bool, const C: bool> CollectionTrait
         }
 
         let db_internal = self.db.upgrade().unwrap();
-        let mut conn = db_internal.borrow_mut();
+        let conn = db_internal.borrow_mut();
 
-        let mut stmt = conn.connection.prepare_cached(&format!("SELECT COUNT(DISTINCT json_field('{}', raw)) FROM [{}] {} {};", field, &self.table_name, if where_str.len() > 0 { format!("WHERE {}", &where_str) } else { String::from("") }, option_str)).unwrap();
+        let mut stmt = conn.prepare_cached(&format!("SELECT COUNT(DISTINCT json_field('{}', raw)) FROM [{}] {} {};", field, &self.table_name, if where_str.len() > 0 { format!("WHERE {}", &where_str) } else { String::from("") }, option_str)).unwrap();
         let count = stmt.query_row(params_from_iter(params.iter()), |row| Ok(row.get::<_, i64>(0).unwrap())).unwrap();
         Ok(count)
     }
 
-    fn drop(&mut self) {}
+    fn drop_index(&mut self, index_name: &str) -> std::result::Result<(), String> {
+        let db_internal = self.db.upgrade().unwrap();
+        let conn = db_internal.borrow_mut();
 
-    fn drop_index(&mut self) {}
+        match conn.execute(&format!("DROP INDEX IF EXISTS {} ;", index_name), &[]) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(e.to_string()),
+        }
+    }
 
     fn find_one(&mut self, query: &serde_json::Value, skip: i64) -> std::result::Result<Record, &str> {
         let mut params = Vec::<rusqlite::types::Value>::new();
         let where_str: String = QueryTranslator {}.query_document(&query, &mut params).unwrap();
         //println!("where_str {}", &where_str);
         let db_internal = self.db.upgrade().unwrap();
-        let mut conn = db_internal.borrow_mut();
+        let conn = db_internal.borrow_mut();
         let mut stmt = conn
-            .connection
             .prepare_cached(&format!("SELECT * FROM [{}] {} LIMIT 1 {};", &self.table_name, if where_str.len() > 0 { format!("WHERE {}", &where_str) } else { String::from("") }, if skip != 0 { format!("OFFSET {}", skip) } else { String::from("") }))
             .unwrap();
 
@@ -363,16 +286,124 @@ impl<const H: bool, const L: bool, const E: bool, const C: bool> CollectionTrait
         }
     }
 
-    fn find_one_and_delete(&mut self) {}
-    fn find_one_and_replace(&mut self) {}
+    fn find_one_and_delete(&mut self, query: &serde_json::Value) -> std::result::Result<Option<Record>, String> {
+        let mut params = Vec::<rusqlite::types::Value>::new();
+        let where_str: String = QueryTranslator {}.query_document(&query, &mut params).unwrap();
+        //println!("where_str {}", &where_str);
+        let db_internal = self.db.upgrade().unwrap();
+        let conn = db_internal.borrow_mut();
+        // an alternative solution is SQLITE_ENABLE_UPDATE_DELETE_LIMIT
+        let mut stmt = conn
+            .prepare_cached(&format!("DELETE FROM [{}] WHERE _id = (SELECT _id FROM [{}] {} LIMIT 1) RETURNING *;", &self.table_name, &self.table_name, if where_str.len() > 0 { format!("WHERE {}", &where_str) } else { String::from("") }))
+            .unwrap();
+
+        match stmt.query_row(params_from_iter(params.iter()), |row| {
+            let id = row.get::<_, i64>(0).unwrap();
+            let bson_doc: bson::Document = bson::from_reader(row.get::<_, Vec<u8>>(1).unwrap().as_slice()).unwrap();
+            let json_doc: serde_json::Value = bson::Bson::from(&bson_doc).into();
+            match (H, L) {
+                (false, false) => Ok(Some(Record {
+                    id: id,
+                    data: json_doc,
+                    hash: String::new(),
+                    last_modified: Utc.timestamp(0, 0),
+                })),
+                (true, false) => {
+                    let hash = row.get::<_, String>(2).unwrap();
+                    Ok(Some(Record { id: id, data: json_doc, hash: hash, last_modified: Utc.timestamp(0, 0) }))
+                }
+                (true, true) => {
+                    let hash = row.get::<_, String>(2).unwrap();
+                    let last_modified = row.get::<_, DateTime<Utc>>(3).unwrap();
+                    Ok(Some(Record { id: id, data: json_doc, hash: hash, last_modified: last_modified }))
+                }
+                (false, true) => {
+                    let last_modified = row.get::<_, DateTime<Utc>>(2).unwrap();
+                    Ok(Some(Record {
+                        id: id,
+                        data: json_doc,
+                        hash: String::new(),
+                        last_modified: last_modified,
+                    }))
+                }
+            }
+        }) {
+            Ok(Some(record)) => Ok(Some(record)),
+            Ok(None) => Ok(None),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+
+    fn find_one_and_replace(&mut self, query: &serde_json::Value, skip: i64) {
+        let mut params = Vec::<rusqlite::types::Value>::new();
+        let where_str: String = QueryTranslator {}.query_document(&query, &mut params).unwrap();
+        //println!("where_str {}", &where_str);
+        let db_internal = self.db.upgrade().unwrap();
+        let mut conn = db_internal.borrow_mut();
+
+        let sp = conn.savepoint().unwrap();
+        {
+            let mut stmt = sp
+                .prepare_cached(&format!("SELECT * FROM [{}] {} LIMIT 1 {};", &self.table_name, if where_str.len() > 0 { format!("WHERE {}", &where_str) } else { String::from("") }, if skip != 0 { format!("OFFSET {}", skip) } else { String::from("") }))
+                .unwrap();
+
+            let rows = stmt
+                .query_row(params_from_iter(params.iter()), |row| {
+                    let id = row.get::<_, i64>(0).unwrap();
+                    Ok(id)
+                })
+                .unwrap();
+            println!("debug transaction {}", rows);
+        }
+        sp.commit().unwrap();
+
+        /*if H == false && L == false {
+            let row = stmt
+                .query_row(params_from_iter(params.iter()), |row| {
+                    Ok((row.get::<_, i64>(0).unwrap(), row.get::<_, Vec<u8>>(1).unwrap() /*, row.get::<_, String>(2).unwrap()*/))
+                })
+                .unwrap();
+
+            let bson_doc: bson::Document = bson::from_reader(row.1.as_slice()).unwrap();
+            let json_doc: serde_json::Value = bson::Bson::from(&bson_doc).into();
+            Ok(Record {
+                id: row.0,
+                data: json_doc,
+                hash: String::new(),
+                last_modified: Utc.timestamp(0, 0),
+            });
+        } else if H == true && L == false {
+            let row = stmt.query_row(params_from_iter(params.iter()), |row| Ok((row.get::<_, i64>(0).unwrap(), row.get::<_, Vec<u8>>(1).unwrap(), row.get::<_, String>(2).unwrap()))).unwrap();
+            let bson_doc: bson::Document = bson::from_reader(row.1.as_slice()).unwrap();
+            let json_doc: serde_json::Value = bson::Bson::from(&bson_doc).into();
+            Ok(Record {
+                id: row.0,
+                data: json_doc,
+                hash: row.2,
+                last_modified: Utc.timestamp(0, 0),
+            });
+        } else if H == true && L == true {
+            let row = stmt.query_row(params_from_iter(params.iter()), |row| Ok((row.get::<_, i64>(0).unwrap(), row.get::<_, Vec<u8>>(1).unwrap(), row.get::<_, String>(2).unwrap(), row.get::<_, DateTime<Utc>>(3).unwrap()))).unwrap();
+            let bson_doc: bson::Document = bson::from_reader(row.1.as_slice()).unwrap();
+            let json_doc: serde_json::Value = bson::Bson::from(&bson_doc).into();
+            Ok(Record { id: row.0, data: json_doc, hash: row.2, last_modified: row.3 });
+        } else if H == false && L == true {
+            let row = stmt.query_row(params_from_iter(params.iter()), |row| Ok((row.get::<_, i64>(0).unwrap(), row.get::<_, Vec<u8>>(1).unwrap(), row.get::<_, DateTime<Utc>>(2).unwrap()))).unwrap();
+            let bson_doc: bson::Document = bson::from_reader(row.1.as_slice()).unwrap();
+            let json_doc: serde_json::Value = bson::Bson::from(&bson_doc).into();
+            Ok(Record { id: row.0, data: json_doc, hash: String::new(), last_modified: row.2 });
+        } else {
+            Err("Unable to find document");
+        }*/
+    }
     fn find_one_and_update(&mut self) {}
     fn find_and_modify(&mut self) {}
     fn get_indexes(&mut self) -> Result<Vec<serde_json::Value>, String> {
         let db_internal = self.db.upgrade().unwrap();
-        let mut conn = db_internal.borrow_mut();
+        let conn = db_internal.borrow_mut();
 
         println!("{}", format!("SELECT * FROM pragma_index_list('{}');", self.table_name));
-        let mut stmt = conn.connection.prepare(&format!("SELECT * FROM pragma_index_list('{}');", self.table_name)).unwrap();
+        let mut stmt = conn.prepare(&format!("SELECT * FROM pragma_index_list('{}');", self.table_name)).unwrap();
         let mut rows = stmt.query([]).unwrap();
 
         let mut result: Vec<serde_json::Value> = Vec::new();
@@ -400,7 +431,7 @@ impl<const H: bool, const L: bool, const E: bool, const C: bool> CollectionTrait
         let mut conn = db_internal.borrow_mut();
 
         if L {
-            let mut stmt = conn.connection.prepare_cached(&format!("INSERT INTO [{}] (raw, _last_modified) VALUES (?1, datetime('now'))", &self.table_name)).unwrap();
+            let mut stmt = conn.prepare_cached(&format!("INSERT INTO [{}] (raw, _last_modified) VALUES (?1, datetime('now'))", &self.table_name)).unwrap();
             let bytes_ref: &[u8] = bytes.as_ref();
             match stmt.execute(&[bytes_ref]) {
                 Ok(_) => {
@@ -411,7 +442,7 @@ impl<const H: bool, const L: bool, const E: bool, const C: bool> CollectionTrait
                 }
             }
         } else {
-            let mut stmt = conn.connection.prepare_cached(&format!("INSERT INTO [{}] (raw) VALUES (?1)", &self.table_name)).unwrap();
+            let mut stmt = conn.prepare_cached(&format!("INSERT INTO [{}] (raw) VALUES (?1)", &self.table_name)).unwrap();
             let bytes_ref: &[u8] = bytes.as_ref();
             match stmt.execute(&[bytes_ref]) {
                 Ok(_) => {

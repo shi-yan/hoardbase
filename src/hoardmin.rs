@@ -25,6 +25,8 @@ use clap::{App, Arg, SubCommand};
 mod collection;
 mod database;
 mod query_translator;
+mod base;
+mod transaction;
 
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]

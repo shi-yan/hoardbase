@@ -18,6 +18,7 @@ clap = "2.34.0"
 cursive_tree_view = "0.7"
 cursive_table_view = "0.13.3"
 chrono = "0.4.19"
+fallible-streaming-iterator = "0.1.9"
 
 [[bin]]
 name = "hoardmin"

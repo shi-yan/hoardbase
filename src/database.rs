@@ -1,11 +1,15 @@
-use crate::collection::Collection;
-use crate::collection::CollectionTrait;
+
 use bson::Bson;
 use sha1::{Digest, Sha1};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
+use std::rc::Weak;
+use crate::transaction::TransactionCollection;
+use crate::collection::Collection;
+
+use crate::base::*;
 
 #[derive(Clone, Debug)]
 pub struct DatabaseConfig {
@@ -62,20 +66,72 @@ impl CollectionConfig {
     }
 }
 
-pub struct TransactionItem {
+/*pub struct TransactionItem {
     statement: String,
     args: Vec<rusqlite::types::Value>,
+}*/
+
+
+pub trait SqliteFunctions {
+    fn prepare_cached(&self, sql: &str) -> rusqlite::Result<rusqlite::CachedStatement, rusqlite::Error>;
+    fn execute(&self, sql: &str, params: &[&dyn rusqlite::ToSql]) -> rusqlite::Result<usize> ;
+    fn savepoint(&mut self) -> rusqlite::Result<rusqlite::Savepoint<'_>>;
+    fn prepare(&self, sql: &str) -> rusqlite::Result<rusqlite::Statement>;
 }
 
 pub struct DatabaseInternal {
-    pub transaction_buffer: Option<Vec<TransactionItem>>,
+    //pub transaction_buffer: Option<Vec<TransactionItem>>,
     pub connection: rusqlite::Connection,
+}
+
+impl SqliteFunctions for DatabaseInternal {
+    fn prepare_cached(&self, sql: &str) -> rusqlite::Result<rusqlite::CachedStatement, rusqlite::Error> {
+        self.connection.prepare_cached(sql)
+    }
+
+    fn execute(&self, sql: &str, params: &[&dyn rusqlite::ToSql]) -> rusqlite::Result<usize> {
+        self.connection.execute(sql, params)
+    }
+
+    fn savepoint(&mut self) -> rusqlite::Result<rusqlite::Savepoint<'_>> {
+        self.connection.savepoint()
+    }
+    fn prepare(&self, sql: &str) -> rusqlite::Result<rusqlite::Statement>{
+        self.connection.prepare(sql)
+    }
+}
+
+
+pub struct TransactionInternal<'conn> {
+    pub connection: rusqlite::Transaction<'conn>,
+}
+
+impl<'conn> SqliteFunctions for TransactionInternal<'conn> {
+    fn prepare_cached(&self, sql: &str) -> rusqlite::Result<rusqlite::CachedStatement, rusqlite::Error> {
+        self.connection.prepare_cached(sql)
+    }
+
+    fn execute(&self, sql: &str, params: &[&dyn rusqlite::ToSql]) -> rusqlite::Result<usize> {
+        self.connection.execute(sql, params)
+    }
+
+    fn savepoint(&mut self) -> rusqlite::Result<rusqlite::Savepoint<'_>> {
+        self.connection.savepoint()
+    }
+    fn prepare(&self, sql: &str) -> rusqlite::Result<rusqlite::Statement>{
+        self.connection.prepare(sql)
+    }
 }
 
 pub struct Database {
     config: DatabaseConfig,
     internal: Rc<RefCell<DatabaseInternal>>,
     collections: HashMap<String, std::rc::Rc<std::cell::RefCell<dyn CollectionTrait>>>,
+}
+
+pub struct Transaction<'conn> {
+    pub tx: Weak<RefCell<TransactionInternal<'conn>>>,
+  //  collections: HashMap<String, std::rc::Rc<std::cell::RefCell<dyn CollectionTrait>>>,
 }
 
 #[macro_export]
@@ -119,7 +175,7 @@ impl Database {
         if let Ok(conn) = rusqlite::Connection::open(config.path.clone()) {
             let mut connection = Database {
                 config: config.clone(),
-                internal: Rc::new(RefCell::new(DatabaseInternal { transaction_buffer: None, connection: conn })),
+                internal: Rc::new(RefCell::new(DatabaseInternal { connection: conn })),
                 collections: HashMap::new(),
             };
             connection.init();
@@ -329,4 +385,31 @@ impl Database {
 
     pub fn drop_collection(&self) {}
     pub fn rename_collection(&self) {}
+
+    pub fn transaction<F>(&self, f: F) -> Result<(), &str> 
+        where F: FnOnce(&mut Transaction) -> Result<(), &'static str>
+    {
+        let mut conn = self.internal.borrow_mut();
+        let tx = std::rc::Rc::new( std::cell::RefCell::new( TransactionInternal{ connection: conn.connection.transaction().unwrap() }));
+
+        let mut collections: HashMap<String, std::rc::Rc<std::cell::RefCell<dyn CollectionTrait>>> =  HashMap::new();
+
+        let tx_weak = std::rc::Rc::downgrade(&tx);
+
+        for (key, value) in &self.collections {
+            collections.insert(key.to_string(), std::rc::Rc::new(RefCell::new(Collection::<false, true, false, false> {
+                name: key.to_string(),
+                db: tx_weak.clone(),
+                table_name: key.to_string(),
+            })));
+        }
+
+        let transaction = Transaction {
+            tx: Rc::downgrade(&tx)
+        };
+
+       // tx.commit().unwrap();
+     
+        Err("Not implemented")
+    }
 }
