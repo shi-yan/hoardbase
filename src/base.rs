@@ -11,7 +11,6 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::rc::Weak;
 
-use crate::database::DatabaseInternal;
 use crate::query_translator::QueryTranslator;
 use fallible_streaming_iterator::FallibleStreamingIterator;
 
@@ -50,14 +49,18 @@ macro_rules! search_option {
 
 #[derive(Clone, Debug)]
 pub struct CollectionConfig {
+    pub name: String,
+    pub table_name: String,
     pub should_hash_document: bool,
     pub should_log_last_modified: bool,
     pub should_hash_unique: bool,
 }
 
 impl CollectionConfig {
-    pub fn default() -> CollectionConfig {
+    pub fn default(name: &str) -> CollectionConfig {
         CollectionConfig {
+            name: name.to_string(),
+            table_name: name.to_string(),
             should_hash_document: false,
             should_log_last_modified: false,
             should_hash_unique: false,
@@ -129,10 +132,69 @@ pub trait CollectionTrait {
     fn update_one(&mut self);
     fn update_many(&mut self);
 }
-/*
+
+pub trait Adapter<A> {
+    fn prepare_cached<'a>(&'a self, sql: &str) -> rusqlite:: Result<rusqlite:: CachedStatement<'a>> ;
+}
+
+impl Adapter<rusqlite::Connection> for rusqlite::Connection {
+    fn prepare_cached<'a>(&'a self, sql: &str) -> rusqlite:: Result<rusqlite:: CachedStatement<'a>> {
+        self.prepare_cached(sql)
+    }
+}
+
 #[inline]
-pub fn find_internal<C, const H:bool, const L:bool>(table_name: &str, conn: C, query: &serde_json::Value, options: &Option<SearchOption>, f: &mut dyn FnMut(&Record) -> std::result::Result<(), &'static str>) -> std::result::Result<(), &'static str>
+pub fn find_internal<A, C: Adapter<A>, const H:bool, const L:bool>(conn: &C, config: &CollectionConfig, query: &serde_json::Value, options: &Option<SearchOption>, f: &mut dyn FnMut(&Record) -> std::result::Result<(), &'static str>) -> std::result::Result<(), &'static str>
 {
+    let mut params = Vec::<rusqlite::types::Value>::new();
+    let where_str: String = QueryTranslator {}.query_document(&query, &mut params).unwrap();
 
+    let mut option_str = String::new();
 
-}*/
+    if let Some(opt) = options {
+        option_str = format!("LIMIT {} OFFSET {}", opt.limit, opt.skip);
+    }
+
+    let mut stmt = conn.prepare_cached(&format!("SELECT * FROM [{}] {} {};", &config.name, if where_str.len() > 0 { format!("WHERE {}", &where_str) } else { String::from("") }, option_str)).unwrap();
+
+    let mut rows = stmt.query(params_from_iter(params.iter())).unwrap();
+
+    while let Ok(row_result) = rows.next() {
+        if let Some(row) = row_result {
+            let id = row.get::<_, i64>(0).unwrap();
+            let bson_doc: bson::Document = bson::from_reader(row.get::<_, Vec<u8>>(1).unwrap().as_slice()).unwrap();
+            let json_doc: serde_json::Value = bson::Bson::from(&bson_doc).into();
+            let record = match (config.should_hash_document, config.should_log_last_modified) {
+                (false, false) => Record {
+                    id: id,
+                    data: json_doc,
+                    hash: String::new(),
+                    last_modified: Utc.timestamp(0, 0),
+                },
+                (true, false) => {
+                    let hash = row.get::<_, String>(2).unwrap();
+                    Record { id: id, data: json_doc, hash: hash, last_modified: Utc.timestamp(0, 0) }
+                }
+                (true, true) => {
+                    let hash = row.get::<_, String>(2).unwrap();
+                    let last_modified = row.get::<_, DateTime<Utc>>(3).unwrap();
+                    Record { id: id, data: json_doc, hash: hash, last_modified: last_modified }
+                }
+                (false, true) => {
+                    let last_modified = row.get::<_, DateTime<Utc>>(2).unwrap();
+                    Record {
+                        id: id,
+                        data: json_doc,
+                        hash: String::new(),
+                        last_modified: last_modified,
+                    }
+                }
+            };
+            f(&record).unwrap();
+        } else {
+            break;
+        }
+    }
+
+    Ok(())
+}

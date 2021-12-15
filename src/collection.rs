@@ -11,11 +11,9 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::rc::Weak;
 
-use crate::database::DatabaseInternal;
-use crate::database::SqliteFunctions;
+use crate::base::*;
 use crate::query_translator::QueryTranslator;
 use fallible_streaming_iterator::FallibleStreamingIterator;
-use crate::base::*;
 
 fn translate_index_config(config: &serde_json::Value, scope: &str, fields: &mut Vec<(String, i8)>) -> std::result::Result<(), &'static str> {
     if config.is_object() {
@@ -50,22 +48,23 @@ pub struct Collection<'a> {
 
 impl<'a> CollectionTrait for Collection<'a> {
     fn find(&mut self, query: &serde_json::Value, options: &Option<SearchOption>, f: &mut dyn FnMut(&Record) -> std::result::Result<(), &'static str>) -> std::result::Result<(), &str> {
-        let db_internal = self.db;
+        match (self.config.should_hash_document, self.config.should_log_last_modified) {
+            (true, true) => find_internal::<_, _, true, true>(self.db, &self.config, query, options, f),
+            (true, false) => find_internal::<_, _, true, false>(self.db, &self.config, query, options, f),
+            (false, false) => find_internal::<_, _, false, false>(self.db, &self.config, query, options, f),
+            (false, true) => find_internal::<_, _, false, true>(self.db, &self.config, query, options, f),
+        }
+
+        /* let db_internal = self.db;
         let conn = db_internal;
-       
         let mut params = Vec::<rusqlite::types::Value>::new();
         let where_str: String = QueryTranslator {}.query_document(&query, &mut params).unwrap();
-    
         let mut option_str = String::new();
-    
         if let Some(opt) = options {
             option_str = format!("LIMIT {} OFFSET {}", opt.limit, opt.skip);
         }
-    
         let mut stmt = conn.prepare_cached(&format!("SELECT * FROM [{}] {} {};", &self.table_name, if where_str.len() > 0 { format!("WHERE {}", &where_str) } else { String::from("") }, option_str)).unwrap();
-    
         let mut rows = stmt.query(params_from_iter(params.iter())).unwrap();
-    
         while let Ok(row_result) = rows.next() {
             if let Some(row) = row_result {
                 let id = row.get::<_, i64>(0).unwrap();
@@ -102,8 +101,7 @@ impl<'a> CollectionTrait for Collection<'a> {
                 break;
             }
         }
-    
-        Ok(())
+        Ok(())*/
     }
 
     fn count_document(&mut self, query: &serde_json::Value, options: &Option<SearchOption>) -> std::result::Result<i64, &str> {
@@ -294,9 +292,7 @@ impl<'a> CollectionTrait for Collection<'a> {
         let db_internal = self.db;
         let conn = db_internal;
         // an alternative solution is SQLITE_ENABLE_UPDATE_DELETE_LIMIT
-        let mut stmt = conn
-            .prepare_cached(&format!("DELETE FROM [{}] WHERE _id = (SELECT _id FROM [{}] {} LIMIT 1) RETURNING *;", &self.table_name, &self.table_name, if where_str.len() > 0 { format!("WHERE {}", &where_str) } else { String::from("") }))
-            .unwrap();
+        let mut stmt = conn.prepare_cached(&format!("DELETE FROM [{}] WHERE _id = (SELECT _id FROM [{}] {} LIMIT 1) RETURNING *;", &self.table_name, &self.table_name, if where_str.len() > 0 { format!("WHERE {}", &where_str) } else { String::from("") })).unwrap();
 
         match stmt.query_row(params_from_iter(params.iter()), |row| {
             let id = row.get::<_, i64>(0).unwrap();
@@ -344,7 +340,7 @@ impl<'a> CollectionTrait for Collection<'a> {
 
         //let sp = self.db.savepoint().unwrap();
         {
-           /* let mut stmt = sp
+            /* let mut stmt = sp
                 .prepare_cached(&format!("SELECT * FROM [{}] {} LIMIT 1 {};", &self.table_name, if where_str.len() > 0 { format!("WHERE {}", &where_str) } else { String::from("") }, if skip != 0 { format!("OFFSET {}", skip) } else { String::from("") }))
                 .unwrap();
 
@@ -356,7 +352,7 @@ impl<'a> CollectionTrait for Collection<'a> {
                 .unwrap();
             println!("debug transaction {}", rows);*/
         }
-       // sp.commit().unwrap();
+        // sp.commit().unwrap();
 
         /*if H == false && L == false {
             let row = stmt

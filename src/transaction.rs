@@ -12,8 +12,6 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::rc::Weak;
 
-use crate::database::DatabaseInternal;
-use crate::database::TransactionInternal;
 use crate::query_translator::QueryTranslator;
 use fallible_streaming_iterator::FallibleStreamingIterator;
 use crate::base::*;

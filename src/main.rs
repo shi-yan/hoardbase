@@ -22,7 +22,7 @@ fn main() {
     let mut db = database::Database::open(&config).unwrap();
 
     {
-        let mut ccol: base::CollectionConfig = base::CollectionConfig::default();
+        let mut ccol: base::CollectionConfig = base::CollectionConfig::default("test_collect.wef");
         ccol.hash_document(true);
         ccol.log_last_modified(true);
         

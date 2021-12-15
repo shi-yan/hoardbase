@@ -35,57 +35,6 @@ impl DatabaseConfig {
     }
 }
 
-pub trait SqliteFunctions {
-    fn prepare_cached(&self, sql: &str) -> rusqlite::Result<rusqlite::CachedStatement, rusqlite::Error>;
-    fn execute(&self, sql: &str, params: &[&dyn rusqlite::ToSql]) -> rusqlite::Result<usize> ;
-    fn savepoint(&mut self) -> rusqlite::Result<rusqlite::Savepoint<'_>>;
-    fn prepare(&self, sql: &str) -> rusqlite::Result<rusqlite::Statement>;
-}
-
-pub struct DatabaseInternal {
-    //pub transaction_buffer: Option<Vec<TransactionItem>>,
-    pub connection: rusqlite::Connection
-}
-
-impl SqliteFunctions for DatabaseInternal {
-    fn prepare_cached(&self, sql: &str) -> rusqlite::Result<rusqlite::CachedStatement, rusqlite::Error> {
-        self.connection.prepare_cached(sql)
-    }
-
-    fn execute(&self, sql: &str, params: &[&dyn rusqlite::ToSql]) -> rusqlite::Result<usize> {
-        self.connection.execute(sql, params)
-    }
-
-    fn savepoint(&mut self) -> rusqlite::Result<rusqlite::Savepoint<'_>> {
-        self.connection.savepoint()
-    }
-    fn prepare(&self, sql: &str) -> rusqlite::Result<rusqlite::Statement>{
-        self.connection.prepare(sql)
-    }
-}
-
-
-pub struct TransactionInternal<'conn> {
-    pub connection: rusqlite::Transaction<'conn>,
-}
-
-impl<'conn> SqliteFunctions for TransactionInternal<'conn> {
-    fn prepare_cached(&self, sql: &str) -> rusqlite::Result<rusqlite::CachedStatement, rusqlite::Error> {
-        self.connection.prepare_cached(sql)
-    }
-
-    fn execute(&self, sql: &str, params: &[&dyn rusqlite::ToSql]) -> rusqlite::Result<usize> {
-        self.connection.execute(sql, params)
-    }
-
-    fn savepoint(&mut self) -> rusqlite::Result<rusqlite::Savepoint<'_>> {
-        self.connection.savepoint()
-    }
-    fn prepare(&self, sql: &str) -> rusqlite::Result<rusqlite::Statement>{
-        self.connection.prepare(sql)
-    }
-}
-
 pub struct Database {
     config: DatabaseConfig,
     internal: rusqlite::Connection,
@@ -233,12 +182,14 @@ impl Database {
                 let compress: bool = row.get(7).unwrap();
 
                 let collection_config: CollectionConfig = CollectionConfig {
+                    name: collection.clone(),
+                    table_name: table_name,
                     should_hash_document: hash_document,
                     should_log_last_modified: log_last_modified,
                     should_hash_unique: false,
                 };
 
-                println!("{} {}", collection, table_name);
+               // println!("{} {}", collection, table_name);
 
                 self.collections.insert(collection.to_string(), 
                 (    collection.to_owned(),
