@@ -47,6 +47,21 @@ pub struct Transaction<'conn> {
   //  collections: HashMap<String, std::rc::Rc<std::cell::RefCell<dyn CollectionTrait>>>,
 }
 
+impl<'a> Transaction<'a>{
+    pub fn collection(&'a self, collection_name: &str) -> Result<TransactionCollection<'a>, &str> {
+        if self.collections.contains_key(collection_name) {
+            let (collection_name, collection_config) = self.collections.get(collection_name).unwrap();
+            Ok(TransactionCollection::<'a> {    
+                 config: collection_config.clone(),
+                 name: collection_name.clone(),
+                 db: &self.connection,
+                 table_name: collection_name.clone() })
+        } else {
+            Err("No collection found")
+        }
+    }
+}
+
 #[macro_export]
 macro_rules! process_record {
     // `()` indicates that the macro takes no argument.

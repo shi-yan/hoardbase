@@ -19,7 +19,7 @@ use crate::base::*;
 pub struct TransactionCollection<'conn> {
     pub config: CollectionConfig,
     pub name: String,
-    pub db: rusqlite::Transaction<'conn>,
+    pub db: &'conn rusqlite::Transaction<'conn>,
     pub table_name: String,
 }
 
