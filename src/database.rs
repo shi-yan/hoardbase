@@ -8,6 +8,7 @@ use std::rc::Rc;
 use std::rc::Weak;
 use crate::transaction::TransactionCollection;
 use crate::collection::Collection;
+use std::marker::PhantomData;
 
 use crate::base::*;
 
@@ -34,44 +35,6 @@ impl DatabaseConfig {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct CollectionConfig {
-    pub should_hash_document: bool,
-    pub should_log_last_modified: bool,
-    pub should_hash_unique: bool,
-}
-
-impl CollectionConfig {
-    pub fn default() -> CollectionConfig {
-        CollectionConfig {
-            should_hash_document: false,
-            should_log_last_modified: false,
-            should_hash_unique: false,
-        }
-    }
-
-    pub fn hash_document<'a>(&'a mut self, args: bool) -> &'a mut CollectionConfig {
-        self.should_hash_document = args;
-        self
-    }
-
-    pub fn log_last_modified<'a>(&'a mut self, args: bool) -> &'a mut CollectionConfig {
-        self.should_log_last_modified = args;
-        self
-    }
-
-    pub fn hash_unique<'a>(&'a mut self, args: bool) -> &'a mut CollectionConfig {
-        self.should_hash_unique = args;
-        self
-    }
-}
-
-/*pub struct TransactionItem {
-    statement: String,
-    args: Vec<rusqlite::types::Value>,
-}*/
-
-
 pub trait SqliteFunctions {
     fn prepare_cached(&self, sql: &str) -> rusqlite::Result<rusqlite::CachedStatement, rusqlite::Error>;
     fn execute(&self, sql: &str, params: &[&dyn rusqlite::ToSql]) -> rusqlite::Result<usize> ;
@@ -81,7 +44,7 @@ pub trait SqliteFunctions {
 
 pub struct DatabaseInternal {
     //pub transaction_buffer: Option<Vec<TransactionItem>>,
-    pub connection: rusqlite::Connection,
+    pub connection: rusqlite::Connection
 }
 
 impl SqliteFunctions for DatabaseInternal {
@@ -125,12 +88,13 @@ impl<'conn> SqliteFunctions for TransactionInternal<'conn> {
 
 pub struct Database {
     config: DatabaseConfig,
-    internal: Rc<RefCell<DatabaseInternal>>,
-    collections: HashMap<String, std::rc::Rc<std::cell::RefCell<dyn CollectionTrait>>>,
+    internal: rusqlite::Connection,
+    collections: HashMap<String, (String, CollectionConfig) >,
 }
 
 pub struct Transaction<'conn> {
-    pub tx: Weak<RefCell<TransactionInternal<'conn>>>,
+    connection: rusqlite::Transaction<'conn>,
+    collections: HashMap<String, (String, CollectionConfig) >,
   //  collections: HashMap<String, std::rc::Rc<std::cell::RefCell<dyn CollectionTrait>>>,
 }
 
@@ -143,68 +107,39 @@ macro_rules! process_record {
     };
 }
 
-#[inline(always)]
-fn create_collection_by_config(config: &CollectionConfig, name: &str, internal: &std::rc::Weak<std::cell::RefCell<DatabaseInternal>>, table_name: &str) -> std::rc::Rc<RefCell<dyn CollectionTrait>> {
-    match (config.should_hash_document, config.should_log_last_modified) {
-        (true, true) => std::rc::Rc::new(RefCell::new(Collection::<true, true, false, false> {
-            name: name.to_string(),
-            db: internal.clone(),
-            table_name: table_name.to_string(),
-        })),
-
-        (true, false) => std::rc::Rc::new(RefCell::new(Collection::<true, false, false, false> {
-            name: name.to_string(),
-            db: internal.clone(),
-            table_name: table_name.to_string(),
-        })),
-        (false, false) => std::rc::Rc::new(RefCell::new(Collection::<false, false, false, false> {
-            name: name.to_string(),
-            db: internal.clone(),
-            table_name: table_name.to_string(),
-        })),
-        (false, true) => std::rc::Rc::new(RefCell::new(Collection::<false, true, false, false> {
-            name: name.to_string(),
-            db: internal.clone(),
-            table_name: table_name.to_string(),
-        })),
-    }
-}
 
 impl Database {
-    pub fn open(config: &DatabaseConfig) -> std::result::Result<Database, &str> {
-        if let Ok(conn) = rusqlite::Connection::open(config.path.clone()) {
+    pub fn open<'b>(config: &DatabaseConfig) -> std::result::Result<Database, &str> {
+        
             let mut connection = Database {
                 config: config.clone(),
-                internal: Rc::new(RefCell::new(DatabaseInternal { connection: conn })),
+                internal: rusqlite::Connection::open(config.path.clone()).unwrap() ,
                 collections: HashMap::new(),
             };
             connection.init();
             Ok(connection)
-        } else {
-            Err("Unable to open db.")
-        }
+     
     }
 
     pub fn path(&self) -> Option<String> {
         Some(self.config.path.clone())
     }
 
-    fn init(&mut self) {
-        let mut conn = self.internal.borrow_mut();
+    fn init<'b>(&'b mut self) {
 
         if self.config.should_trace {
-            conn.connection.trace(Some(|statement| {
+            self.internal.trace(Some(|statement| {
                 println!("trace: {}", statement);
             }));
         }
 
         if self.config.should_profile {
-            conn.connection.profile(Some(|statement, duration| {
+            self.internal.profile(Some(|statement, duration| {
                 println!("profile: {} {} nanos", statement, duration.as_nanos());
             }));
         }
 
-        conn.connection
+        self.internal
             .create_scalar_function("json_field", 2, rusqlite::functions::FunctionFlags::SQLITE_UTF8 | rusqlite::functions::FunctionFlags::SQLITE_DETERMINISTIC, move |ctx| {
                 assert_eq!(ctx.len(), 2, "called with unexpected number of arguments");
 
@@ -253,7 +188,7 @@ impl Database {
             })
             .unwrap();
 
-        conn.connection
+        self.internal
             .create_scalar_function("sha1", 1, rusqlite::functions::FunctionFlags::SQLITE_UTF8 | rusqlite::functions::FunctionFlags::SQLITE_DETERMINISTIC, move |ctx| {
                 assert_eq!(ctx.len(), 1, "called with unexpected number of arguments");
 
@@ -266,7 +201,7 @@ impl Database {
             })
             .unwrap();
 
-        let tx = conn.connection.transaction().unwrap();
+        let tx = self.internal.transaction().unwrap();
         {
             tx.execute(
                 "CREATE TABLE IF NOT EXISTS _hoardbase (
@@ -286,7 +221,7 @@ impl Database {
         }
         tx.commit().unwrap();
 
-        let mut stmt = conn.connection.prepare("SELECT * FROM _hoardbase WHERE type=0").unwrap();
+        let mut stmt = self.internal.prepare("SELECT * FROM _hoardbase WHERE type=0").unwrap();
         let mut rows = stmt.query([]).unwrap();
         while let Ok(row_result) = rows.next() {
             if let Some(row) = row_result {
@@ -305,19 +240,27 @@ impl Database {
 
                 println!("{} {}", collection, table_name);
 
-                self.collections.insert(collection.to_string(), create_collection_by_config(&collection_config, &collection, &Rc::downgrade(&self.internal), &table_name));
+                self.collections.insert(collection.to_string(), 
+                (    collection.to_owned(),
+                    collection_config.to_owned(),
+                ));
             } else {
                 break;
             }
         }
     }
 
-    pub fn create_collection(&mut self, collection_name: &str, config: &CollectionConfig) -> Result<std::cell::RefMut<dyn CollectionTrait>, &str> {
+    pub fn create_collection<'a>(&'a mut self, collection_name: &str, config: &CollectionConfig) -> Result<Collection<'a>, &str> {
         if self.collections.contains_key(collection_name) {
-            Ok(self.collections.get(collection_name).clone().unwrap().borrow_mut())
+            let (collection_name, collection_config) = self.collections.get(collection_name).unwrap();
+            Ok(Collection::<'a> {    
+                 config: collection_config.clone(),
+                 name: collection_name.clone(),
+                 db: &self.internal,
+                 table_name: collection_name.clone() })
         } else {
-            let mut conn = self.internal.borrow_mut();
-            let tx = conn.connection.transaction().unwrap();
+          
+            let tx = self.internal.transaction().unwrap();
 
             {
                 tx.execute(
@@ -361,24 +304,36 @@ impl Database {
             }
             tx.commit().unwrap();
 
-            self.collections.insert(collection_name.to_string(), create_collection_by_config(&config, &collection_name, &Rc::downgrade(&self.internal), &collection_name));
-
-            Ok(self.collections.get(collection_name).clone().unwrap().borrow_mut())
+            self.collections.insert(collection_name.to_string(), 
+            (    collection_name.to_owned(),
+            config.to_owned(),
+            ));
+        
+            Ok(Collection::<'a> {    
+                config: config.clone(),
+                name: collection_name.to_string(),
+                db: &self.internal,
+                table_name: collection_name.to_string() })
         }
     }
 
-    pub fn collection(&mut self, collection_name: &str) -> Result<std::cell::RefMut<dyn CollectionTrait>, &str> {
+    pub fn collection<'a>(&'a mut self, collection_name: &str) -> Result<Collection<'a>, &str> {
         if self.collections.contains_key(collection_name) {
-            Ok(self.collections.get(collection_name).clone().unwrap().borrow_mut())
+            let (collection_name, collection_config) = self.collections.get(collection_name).unwrap();
+            Ok(Collection::<'a> {    
+                 config: collection_config.clone(),
+                 name: collection_name.clone(),
+                 db: &self.internal,
+                 table_name: collection_name.clone() })
         } else {
             Err("No collection found")
         }
     }
 
-    pub fn list_collections(&self) -> Vec<&std::rc::Rc<std::cell::RefCell<dyn CollectionTrait>>> {
+    pub fn list_collections(&self) -> Vec<(String, CollectionConfig)> {
         let mut collections = Vec::new();
         for collection in self.collections.values() {
-            collections.push(collection);
+            collections.push(collection.clone());
         }
         collections
     }
@@ -386,28 +341,35 @@ impl Database {
     pub fn drop_collection(&self) {}
     pub fn rename_collection(&self) {}
 
-    pub fn transaction<F>(&self, f: F) -> Result<(), &str> 
-        where F: FnOnce(&mut Transaction) -> Result<(), &'static str>
+    pub fn transaction<'a, F>(&'a mut self, f: F) -> Result<(), &str> 
+        where F: FnOnce(& Transaction) -> Result<(), &'static str>
     {
-        let mut conn = self.internal.borrow_mut();
-        let tx = std::rc::Rc::new( std::cell::RefCell::new( TransactionInternal{ connection: conn.connection.transaction().unwrap() }));
+       
+        {
+           // let mut conn = self.internal;
+            
+                let t = self.internal.transaction().unwrap();
+                let mut transaction = Transaction {
+                    connection: t,
+                    collections: HashMap::new(),
+                };
+              //  let tx =  TransactionInternal::<'a>{ connection: t  };
+            
 
-        let mut collections: HashMap<String, std::rc::Rc<std::cell::RefCell<dyn CollectionTrait>>> =  HashMap::new();
-
-        let tx_weak = std::rc::Rc::downgrade(&tx);
+      //  let tx_weak = std::rc::Rc::downgrade(&tx);
 
         for (key, value) in &self.collections {
-            collections.insert(key.to_string(), std::rc::Rc::new(RefCell::new(Collection::<false, true, false, false> {
-                name: key.to_string(),
-                db: tx_weak.clone(),
-                table_name: key.to_string(),
-            })));
+            transaction.collections.insert(key.to_string(), (
+        
+                 key.to_string(),
+                 value.1.clone(),
+            ));
         }
 
-        let transaction = Transaction {
-            tx: Rc::downgrade(&tx)
-        };
+ 
 
+        f(&transaction).unwrap();
+        }
        // tx.commit().unwrap();
      
         Err("Not implemented")

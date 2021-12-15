@@ -11,7 +11,7 @@ mod query_translator;
 mod transaction;
 
 use base::SearchOption;
-
+use crate::base::CollectionTrait;
 fn main() {
     println!("Hello, world!");
 
@@ -22,7 +22,7 @@ fn main() {
     let mut db = database::Database::open(&config).unwrap();
 
     {
-        let mut ccol: database::CollectionConfig = database::CollectionConfig::default();
+        let mut ccol: base::CollectionConfig = base::CollectionConfig::default();
         ccol.hash_document(true);
         ccol.log_last_modified(true);
         
@@ -35,7 +35,7 @@ fn main() {
     let collections = db.list_collections();
 
     for coll in collections {
-        println!("{}", coll.borrow().get_name());
+        println!("{}", coll.0);
     }
     for age in 18..300 {
         db.collection("test_collect.wef")

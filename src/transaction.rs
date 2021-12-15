@@ -13,21 +13,78 @@ use std::rc::Rc;
 use std::rc::Weak;
 
 use crate::database::DatabaseInternal;
+use crate::database::TransactionInternal;
 use crate::query_translator::QueryTranslator;
 use fallible_streaming_iterator::FallibleStreamingIterator;
 use crate::base::*;
 
-pub struct TransactionCollection<'conn, const H: bool, const L: bool, const E: bool, const C: bool> {
+pub struct TransactionCollection<'conn> {
+    pub config: CollectionConfig,
     pub name: String,
-    pub db: Weak<RefCell<rusqlite::Transaction<'conn>>>,
+    pub db: rusqlite::Transaction<'conn>,
     pub table_name: String,
 }
 
-impl<'conn, const H: bool, const L: bool, const E: bool, const C: bool> TransactionCollection<'conn, H, L, E, C> {
-    /*pub fn find(&mut self, query: &serde_json::Value, options: &Option<SearchOption>, f: &mut dyn FnMut(&Record) -> std::result::Result<(), &'static str>) -> std::result::Result<(), &str> {
-        let db_internal = self.db.upgrade().unwrap();
-        let conn = db_internal.borrow_mut();
-        return find_internal::<_, true, true>(&self.table_name, &conn, query, options, f);
-    }*/
+impl<'conn> CollectionTrait for TransactionCollection<'conn> {
+    fn find(&mut self, query: &serde_json::Value, options: &Option<SearchOption>, f: &mut dyn FnMut(&Record) -> std::result::Result<(), &'static str>) -> std::result::Result<(), &str>{
+        Err("afd")
+    }
+    fn get_name(&self) -> &str{
+        return "test";
+    }
+    fn get_table_name(&self) -> &str{
+        return "sf"
+    }
+
+    fn count_document(&mut self, query: &serde_json::Value, options: &Option<SearchOption>) -> std::result::Result<i64, &str>{
+        Err("afd")
+    }
+    fn create_index(&mut self, config: &serde_json::Value, is_unique: bool) -> std::result::Result<(), String>{
+        Err("afd".to_string())
+    }
+
+    fn delete_one(&mut self, query: &serde_json::Value) -> std::result::Result<usize, String>{
+        Err("afd".to_string())
+    }
+    fn changes(&mut self) -> std::result::Result<i64, String>{
+        Err("afd".to_string())
+    }
+    fn delete_many(&mut self, query: &serde_json::Value) -> std::result::Result<usize, String>{
+        Err("afd".to_string())
+    }
+    fn distinct(&mut self, field: &str, query: &Option<&serde_json::Value>, options: &Option<SearchOption>) -> std::result::Result<i64, &str>{
+        Err("afd")
+    }
+
+    fn drop_index(&mut self, index_name: &str) -> std::result::Result<(), String>{
+        Err("afd".to_string())
+    }
+
+    fn find_one(&mut self, query: &serde_json::Value, skip: i64) -> std::result::Result<Record, &str>{
+        Err("afd")
+    }
+    fn find_one_and_delete(&mut self, query: &serde_json::Value) -> std::result::Result<Option<Record>, String>{
+        Err("afd".to_string())
+    }
+    fn find_one_and_replace(&mut self, query: &serde_json::Value, skip: i64){
+
+    }
+    fn find_one_and_update(&mut self){}
+    fn find_and_modify(&mut self){}
+    fn get_indexes(&mut self) -> Result<Vec<serde_json::Value>, String>{
+        Err("afd".to_string())
+    }
+
+    fn insert_one(&mut self, document: &serde_json::Value) -> std::result::Result<(), String>{
+        Err("afd".to_string())
+    }
+
+    fn insert_many(&mut self){}
+
+    fn reindex(&mut self){}
+    fn replace_one(&mut self){}
+
+    fn update_one(&mut self){}
+    fn update_many(&mut self){}
 
 }

@@ -48,6 +48,39 @@ macro_rules! search_option {
     };
 }
 
+#[derive(Clone, Debug)]
+pub struct CollectionConfig {
+    pub should_hash_document: bool,
+    pub should_log_last_modified: bool,
+    pub should_hash_unique: bool,
+}
+
+impl CollectionConfig {
+    pub fn default() -> CollectionConfig {
+        CollectionConfig {
+            should_hash_document: false,
+            should_log_last_modified: false,
+            should_hash_unique: false,
+        }
+    }
+
+    pub fn hash_document<'a>(&'a mut self, args: bool) -> &'a mut CollectionConfig {
+        self.should_hash_document = args;
+        self
+    }
+
+    pub fn log_last_modified<'a>(&'a mut self, args: bool) -> &'a mut CollectionConfig {
+        self.should_log_last_modified = args;
+        self
+    }
+
+    pub fn hash_unique<'a>(&'a mut self, args: bool) -> &'a mut CollectionConfig {
+        self.should_hash_unique = args;
+        self
+    }
+}
+
+
 
 #[derive(Debug, Clone)]
 pub struct Record {
