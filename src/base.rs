@@ -124,9 +124,9 @@ pub trait CollectionTrait {
 
     fn insert_one(&mut self, document: &serde_json::Value) -> std::result::Result<(), String>;
 
-    fn insert_many(&mut self);
+    fn insert_many(&mut self, documents: &Vec<serde_json::Value>) -> std::result::Result<(), String> ;
 
-    fn reindex(&mut self);
+    fn reindex(&mut self) -> std::result::Result<(), String> ;
     fn replace_one(&mut self, query: &serde_json::Value, replacement: &serde_json::Value, skip: i64) -> std::result::Result<(), String>;
 
     fn update_one(&mut self);

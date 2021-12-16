@@ -360,11 +360,9 @@ impl<'a> CollectionTrait for Collection<'a> {
         let bson_doc = bson::ser::to_document(&document).unwrap();
         let mut bytes: Vec<u8> = Vec::new();
         bson_doc.to_writer(&mut bytes).unwrap();
-        let db_internal = self.db;
-        let mut conn = db_internal;
 
         if self.config.should_log_last_modified {
-            let mut stmt = conn.prepare_cached(&format!("INSERT INTO [{}] (raw, _last_modified) VALUES (?1, datetime('now'))", &self.table_name)).unwrap();
+            let mut stmt = self.db.prepare_cached(&format!("INSERT INTO [{}] (raw, _last_modified) VALUES (?1, datetime('now'))", &self.table_name)).unwrap();
             let bytes_ref: &[u8] = bytes.as_ref();
             match stmt.execute(&[bytes_ref]) {
                 Ok(_) => {
@@ -375,7 +373,7 @@ impl<'a> CollectionTrait for Collection<'a> {
                 }
             }
         } else {
-            let mut stmt = conn.prepare_cached(&format!("INSERT INTO [{}] (raw) VALUES (?1)", &self.table_name)).unwrap();
+            let mut stmt = self.db.prepare_cached(&format!("INSERT INTO [{}] (raw) VALUES (?1)", &self.table_name)).unwrap();
             let bytes_ref: &[u8] = bytes.as_ref();
             match stmt.execute(&[bytes_ref]) {
                 Ok(_) => {
@@ -388,10 +386,38 @@ impl<'a> CollectionTrait for Collection<'a> {
         }
     }
 
-    fn insert_many(&mut self) {}
+    fn insert_many(&mut self, documents: &Vec<serde_json::Value>) -> std::result::Result<(), String> {
+        if self.config.should_log_last_modified {
+            let mut stmt = self.db.prepare_cached(&format!("INSERT INTO [{}] (raw, _last_modified) VALUES (?1, datetime('now'))", &self.table_name)).unwrap();
+            for doc in documents {
+                let bson_doc = bson::ser::to_document(&doc).unwrap();
+                let mut bytes: Vec<u8> = Vec::new();
+                bson_doc.to_writer(&mut bytes).unwrap();
 
-    fn reindex(&mut self) {}
-    fn replace_one(&mut self, query: &serde_json::Value, replacement: &serde_json::Value, skip: i64) -> std::result::Result<(), String>{
+                let bytes_ref: &[u8] = bytes.as_ref();
+                stmt.execute(&[bytes_ref]).unwrap();
+            }
+        } else {
+            let mut stmt = self.db.prepare_cached(&format!("INSERT INTO [{}] (raw) VALUES (?1)", &self.table_name)).unwrap();
+            for doc in documents {
+                let bson_doc = bson::ser::to_document(&doc).unwrap();
+                let mut bytes: Vec<u8> = Vec::new();
+                bson_doc.to_writer(&mut bytes).unwrap();
+
+                let bytes_ref: &[u8] = bytes.as_ref();
+                stmt.execute(&[bytes_ref]).unwrap();
+            }
+        }
+
+        Ok(())
+    }
+
+    fn reindex(&mut self) -> std::result::Result<(), String> {
+        self.db.execute(&format!("REINDEX [{}]", &self.table_name), []).unwrap();
+
+        Ok(())
+    }
+    fn replace_one(&mut self, query: &serde_json::Value, replacement: &serde_json::Value, skip: i64) -> std::result::Result<(), String> {
         let mut params = Vec::<rusqlite::types::Value>::new();
         let bson_doc = bson::ser::to_document(&replacement).unwrap();
         let mut bytes: Vec<u8> = Vec::new();
@@ -413,16 +439,13 @@ impl<'a> CollectionTrait for Collection<'a> {
                 &self.table_name,
                 &self.table_name,
                 if where_str.len() > 0 { format!("WHERE {}", &where_str) } else { String::from("") },
-                if skip != 0 { format!("OFFSET {}", skip) } else { String::from("")}
+                if skip != 0 { format!("OFFSET {}", skip) } else { String::from("") }
             ))
             .unwrap();
 
-             stmt
-                .execute(params_from_iter(params.iter()))
-                .unwrap();
+        stmt.execute(params_from_iter(params.iter())).unwrap();
 
-                Ok(())
-
+        Ok(())
     }
 
     fn update_one(&mut self) {}

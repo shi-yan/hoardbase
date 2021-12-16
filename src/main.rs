@@ -168,4 +168,6 @@ fn main() {
     }), 0);
 
     println!("find one and replace result {:?}", rr);
+
+    let rr2 = db.collection("test_collect.wef").unwrap().reindex().unwrap();
 }

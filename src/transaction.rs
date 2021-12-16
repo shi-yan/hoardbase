@@ -77,9 +77,13 @@ impl<'conn> CollectionTrait for TransactionCollection<'conn> {
         Err("afd".to_string())
     }
 
-    fn insert_many(&mut self){}
+    fn insert_many(&mut self, documents: &Vec<serde_json::Value>) -> std::result::Result<(), String> {
+        Err("afd".to_string())
+    }
 
-    fn reindex(&mut self){}
+    fn reindex(&mut self) -> std::result::Result<(), String> {
+        Err("afd".to_string())
+    }
     fn replace_one(&mut self, query: &serde_json::Value, replacement: &serde_json::Value, skip: i64) -> std::result::Result<(), String>{
         Err("afd".to_string())
     }
