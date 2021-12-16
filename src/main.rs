@@ -158,5 +158,14 @@ fn main() {
 
     println!("drop index result {:?}", dr);
 
-    db.collection("test_collect.wef").unwrap().find_one_and_replace(&json!({"age": 221}), 0);
+    let rr = db.collection("test_collect.wef").unwrap().replace_one(&json!({"age": 221}), &json!(                {
+        "name": "replaced",
+        "age": 3,
+        "test_struct": {
+            "name": "replaced test",
+            "age": 13
+        }
+    }), 0);
+
+    println!("find one and replace result {:?}", rr);
 }

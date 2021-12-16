@@ -331,70 +331,6 @@ impl<'a> CollectionTrait for Collection<'a> {
         }
     }
 
-    fn find_one_and_replace(&mut self, query: &serde_json::Value, skip: i64) {
-        let mut params = Vec::<rusqlite::types::Value>::new();
-        let where_str: String = QueryTranslator {}.query_document(&query, &mut params).unwrap();
-        //println!("where_str {}", &where_str);
-        let db_internal = self.db;
-        let mut conn = db_internal;
-
-        //let sp = self.db.savepoint().unwrap();
-        {
-            /* let mut stmt = sp
-                .prepare_cached(&format!("SELECT * FROM [{}] {} LIMIT 1 {};", &self.table_name, if where_str.len() > 0 { format!("WHERE {}", &where_str) } else { String::from("") }, if skip != 0 { format!("OFFSET {}", skip) } else { String::from("") }))
-                .unwrap();
-
-            let rows = stmt
-                .query_row(params_from_iter(params.iter()), |row| {
-                    let id = row.get::<_, i64>(0).unwrap();
-                    Ok(id)
-                })
-                .unwrap();
-            println!("debug transaction {}", rows);*/
-        }
-        // sp.commit().unwrap();
-
-        /*if H == false && L == false {
-            let row = stmt
-                .query_row(params_from_iter(params.iter()), |row| {
-                    Ok((row.get::<_, i64>(0).unwrap(), row.get::<_, Vec<u8>>(1).unwrap() /*, row.get::<_, String>(2).unwrap()*/))
-                })
-                .unwrap();
-
-            let bson_doc: bson::Document = bson::from_reader(row.1.as_slice()).unwrap();
-            let json_doc: serde_json::Value = bson::Bson::from(&bson_doc).into();
-            Ok(Record {
-                id: row.0,
-                data: json_doc,
-                hash: String::new(),
-                last_modified: Utc.timestamp(0, 0),
-            });
-        } else if H == true && L == false {
-            let row = stmt.query_row(params_from_iter(params.iter()), |row| Ok((row.get::<_, i64>(0).unwrap(), row.get::<_, Vec<u8>>(1).unwrap(), row.get::<_, String>(2).unwrap()))).unwrap();
-            let bson_doc: bson::Document = bson::from_reader(row.1.as_slice()).unwrap();
-            let json_doc: serde_json::Value = bson::Bson::from(&bson_doc).into();
-            Ok(Record {
-                id: row.0,
-                data: json_doc,
-                hash: row.2,
-                last_modified: Utc.timestamp(0, 0),
-            });
-        } else if H == true && L == true {
-            let row = stmt.query_row(params_from_iter(params.iter()), |row| Ok((row.get::<_, i64>(0).unwrap(), row.get::<_, Vec<u8>>(1).unwrap(), row.get::<_, String>(2).unwrap(), row.get::<_, DateTime<Utc>>(3).unwrap()))).unwrap();
-            let bson_doc: bson::Document = bson::from_reader(row.1.as_slice()).unwrap();
-            let json_doc: serde_json::Value = bson::Bson::from(&bson_doc).into();
-            Ok(Record { id: row.0, data: json_doc, hash: row.2, last_modified: row.3 });
-        } else if H == false && L == true {
-            let row = stmt.query_row(params_from_iter(params.iter()), |row| Ok((row.get::<_, i64>(0).unwrap(), row.get::<_, Vec<u8>>(1).unwrap(), row.get::<_, DateTime<Utc>>(2).unwrap()))).unwrap();
-            let bson_doc: bson::Document = bson::from_reader(row.1.as_slice()).unwrap();
-            let json_doc: serde_json::Value = bson::Bson::from(&bson_doc).into();
-            Ok(Record { id: row.0, data: json_doc, hash: String::new(), last_modified: row.2 });
-        } else {
-            Err("Unable to find document");
-        }*/
-    }
-    fn find_one_and_update(&mut self) {}
-    fn find_and_modify(&mut self) {}
     fn get_indexes(&mut self) -> Result<Vec<serde_json::Value>, String> {
         let db_internal = self.db;
         let conn = db_internal;
@@ -455,7 +391,39 @@ impl<'a> CollectionTrait for Collection<'a> {
     fn insert_many(&mut self) {}
 
     fn reindex(&mut self) {}
-    fn replace_one(&mut self) {}
+    fn replace_one(&mut self, query: &serde_json::Value, replacement: &serde_json::Value, skip: i64) -> std::result::Result<(), String>{
+        let mut params = Vec::<rusqlite::types::Value>::new();
+        let bson_doc = bson::ser::to_document(&replacement).unwrap();
+        let mut bytes: Vec<u8> = Vec::new();
+        bson_doc.to_writer(&mut bytes).unwrap();
+        params.push(rusqlite::types::Value::Blob(bytes));
+
+        let where_str: String = QueryTranslator {}.query_document(&query, &mut params).unwrap();
+
+        let mut stmt = self
+            .db
+            .prepare_cached(&format!(
+                "UPDATE [{}] SET raw=?1, _last_modified=datetime('now') WHERE _id = (
+                    SELECT
+                        _id
+                    FROM
+                        [{}] 
+                    {} LIMIT 1 {}
+                );",
+                &self.table_name,
+                &self.table_name,
+                if where_str.len() > 0 { format!("WHERE {}", &where_str) } else { String::from("") },
+                if skip != 0 { format!("OFFSET {}", skip) } else { String::from("")}
+            ))
+            .unwrap();
+
+             stmt
+                .execute(params_from_iter(params.iter()))
+                .unwrap();
+
+                Ok(())
+
+    }
 
     fn update_one(&mut self) {}
     fn update_many(&mut self) {}

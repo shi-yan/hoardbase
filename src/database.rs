@@ -335,6 +335,7 @@ impl Database {
  
 
         f(&transaction).unwrap();
+        transaction.connection.commit().unwrap();
         }
        // tx.commit().unwrap();
      

@@ -117,9 +117,9 @@ pub trait CollectionTrait {
 
     fn find_one(&mut self, query: &serde_json::Value, skip: i64) -> std::result::Result<Record, &str>;
     fn find_one_and_delete(&mut self, query: &serde_json::Value) -> std::result::Result<Option<Record>, String>;
-    fn find_one_and_replace(&mut self, query: &serde_json::Value, skip: i64);
-    fn find_one_and_update(&mut self);
-    fn find_and_modify(&mut self);
+   // fn find_one_and_replace(&mut self, query: &serde_json::Value, replacement: &serde_json::Value, skip: i64) -> std::result::Result<Record, String> ;
+   // fn find_one_and_update(&mut self);
+   // fn find_and_modify(&mut self);
     fn get_indexes(&mut self) -> Result<Vec<serde_json::Value>, String>;
 
     fn insert_one(&mut self, document: &serde_json::Value) -> std::result::Result<(), String>;
@@ -127,7 +127,7 @@ pub trait CollectionTrait {
     fn insert_many(&mut self);
 
     fn reindex(&mut self);
-    fn replace_one(&mut self);
+    fn replace_one(&mut self, query: &serde_json::Value, replacement: &serde_json::Value, skip: i64) -> std::result::Result<(), String>;
 
     fn update_one(&mut self);
     fn update_many(&mut self);
