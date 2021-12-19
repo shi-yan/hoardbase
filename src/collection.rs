@@ -356,32 +356,86 @@ impl<'a> CollectionTrait for Collection<'a> {
         Ok(result)
     }
 
-    fn insert_one(&mut self, document: &serde_json::Value) -> std::result::Result<(), String> {
+    fn insert_one(&mut self, document: &serde_json::Value) -> std::result::Result<Option<Record>, String> {
         let bson_doc = bson::ser::to_document(&document).unwrap();
         let mut bytes: Vec<u8> = Vec::new();
         bson_doc.to_writer(&mut bytes).unwrap();
 
         if self.config.should_log_last_modified {
-            let mut stmt = self.db.prepare_cached(&format!("INSERT INTO [{}] (raw, _last_modified) VALUES (?1, datetime('now'))", &self.table_name)).unwrap();
+            let mut stmt = self.db.prepare_cached(&format!("INSERT INTO [{}] (raw, _last_modified) VALUES (?1, datetime('now')) RETURNING *", &self.table_name)).unwrap();
             let bytes_ref: &[u8] = bytes.as_ref();
-            match stmt.execute(&[bytes_ref]) {
-                Ok(_) => {
-                    return Ok(());
+            match stmt.query_row(&[bytes_ref], |row| {
+                let id = row.get::<_, i64>(0).unwrap();
+                let bson_doc: bson::Document = bson::from_reader(row.get::<_, Vec<u8>>(1).unwrap().as_slice()).unwrap();
+                let json_doc: serde_json::Value = bson::Bson::from(&bson_doc).into();
+                match (self.config.should_hash_document, self.config.should_log_last_modified) {
+                    (false, false) => Ok(Some(Record {
+                        id: id,
+                        data: json_doc,
+                        hash: String::new(),
+                        last_modified: Utc.timestamp(0, 0),
+                    })),
+                    (true, false) => {
+                        let hash = row.get::<_, String>(2).unwrap();
+                        Ok(Some(Record { id: id, data: json_doc, hash: hash, last_modified: Utc.timestamp(0, 0) }))
+                    }
+                    (true, true) => {
+                        let hash = row.get::<_, String>(2).unwrap();
+                        let last_modified = row.get::<_, DateTime<Utc>>(3).unwrap();
+                        Ok(Some(Record { id: id, data: json_doc, hash: hash, last_modified: last_modified }))
+                    }
+                    (false, true) => {
+                        let last_modified = row.get::<_, DateTime<Utc>>(2).unwrap();
+                        Ok(Some(Record {
+                            id: id,
+                            data: json_doc,
+                            hash: String::new(),
+                            last_modified: last_modified,
+                        }))
+                    }
                 }
-                Err(e) => {
-                    return Err(e.to_string());
-                }
+            }) {
+                Ok(Some(record)) => Ok(Some(record)),
+                Ok(None) => Ok(None),
+                Err(e) => Err(e.to_string()),
             }
         } else {
-            let mut stmt = self.db.prepare_cached(&format!("INSERT INTO [{}] (raw) VALUES (?1)", &self.table_name)).unwrap();
+            let mut stmt = self.db.prepare_cached(&format!("INSERT INTO [{}] (raw) VALUES (?1) RETURNING *", &self.table_name)).unwrap();
             let bytes_ref: &[u8] = bytes.as_ref();
-            match stmt.execute(&[bytes_ref]) {
-                Ok(_) => {
-                    return Ok(());
+            match stmt.query_row(&[bytes_ref], |row| {
+                let id = row.get::<_, i64>(0).unwrap();
+                let bson_doc: bson::Document = bson::from_reader(row.get::<_, Vec<u8>>(1).unwrap().as_slice()).unwrap();
+                let json_doc: serde_json::Value = bson::Bson::from(&bson_doc).into();
+                match (self.config.should_hash_document, self.config.should_log_last_modified) {
+                    (false, false) => Ok(Some(Record {
+                        id: id,
+                        data: json_doc,
+                        hash: String::new(),
+                        last_modified: Utc.timestamp(0, 0),
+                    })),
+                    (true, false) => {
+                        let hash = row.get::<_, String>(2).unwrap();
+                        Ok(Some(Record { id: id, data: json_doc, hash: hash, last_modified: Utc.timestamp(0, 0) }))
+                    }
+                    (true, true) => {
+                        let hash = row.get::<_, String>(2).unwrap();
+                        let last_modified = row.get::<_, DateTime<Utc>>(3).unwrap();
+                        Ok(Some(Record { id: id, data: json_doc, hash: hash, last_modified: last_modified }))
+                    }
+                    (false, true) => {
+                        let last_modified = row.get::<_, DateTime<Utc>>(2).unwrap();
+                        Ok(Some(Record {
+                            id: id,
+                            data: json_doc,
+                            hash: String::new(),
+                            last_modified: last_modified,
+                        }))
+                    }
                 }
-                Err(e) => {
-                    return Err(e.to_string());
-                }
+            }) {
+                Ok(Some(record)) => Ok(Some(record)),
+                Ok(None) => Ok(None),
+                Err(e) => Err(e.to_string()),
             }
         }
     }
@@ -417,7 +471,8 @@ impl<'a> CollectionTrait for Collection<'a> {
 
         Ok(())
     }
-    fn replace_one(&mut self, query: &serde_json::Value, replacement: &serde_json::Value, skip: i64) -> std::result::Result<(), String> {
+
+    fn replace_one(&mut self, query: &serde_json::Value, replacement: &serde_json::Value, skip: i64) -> std::result::Result<Option<Record>, String> {
         let mut params = Vec::<rusqlite::types::Value>::new();
         let bson_doc = bson::ser::to_document(&replacement).unwrap();
         let mut bytes: Vec<u8> = Vec::new();
@@ -435,7 +490,7 @@ impl<'a> CollectionTrait for Collection<'a> {
                     FROM
                         [{}] 
                     {} LIMIT 1 {}
-                );",
+                ) RETURNING *;",
                 &self.table_name,
                 &self.table_name,
                 if where_str.len() > 0 { format!("WHERE {}", &where_str) } else { String::from("") },
@@ -443,11 +498,203 @@ impl<'a> CollectionTrait for Collection<'a> {
             ))
             .unwrap();
 
-        stmt.execute(params_from_iter(params.iter())).unwrap();
-
-        Ok(())
+        match stmt.query_row(params_from_iter(params.iter()), |row| {
+            let id = row.get::<_, i64>(0).unwrap();
+            let bson_doc: bson::Document = bson::from_reader(row.get::<_, Vec<u8>>(1).unwrap().as_slice()).unwrap();
+            let json_doc: serde_json::Value = bson::Bson::from(&bson_doc).into();
+            match (self.config.should_hash_document, self.config.should_log_last_modified) {
+                (false, false) => Ok(Some(Record {
+                    id: id,
+                    data: json_doc,
+                    hash: String::new(),
+                    last_modified: Utc.timestamp(0, 0),
+                })),
+                (true, false) => {
+                    let hash = row.get::<_, String>(2).unwrap();
+                    Ok(Some(Record { id: id, data: json_doc, hash: hash, last_modified: Utc.timestamp(0, 0) }))
+                }
+                (true, true) => {
+                    let hash = row.get::<_, String>(2).unwrap();
+                    let last_modified = row.get::<_, DateTime<Utc>>(3).unwrap();
+                    Ok(Some(Record { id: id, data: json_doc, hash: hash, last_modified: last_modified }))
+                }
+                (false, true) => {
+                    let last_modified = row.get::<_, DateTime<Utc>>(2).unwrap();
+                    Ok(Some(Record {
+                        id: id,
+                        data: json_doc,
+                        hash: String::new(),
+                        last_modified: last_modified,
+                    }))
+                }
+            }
+        }) {
+            Ok(Some(record)) => Ok(Some(record)),
+            Ok(None) => Ok(None),
+            Err(e) => Err(e.to_string()),
+        }
     }
 
-    fn update_one(&mut self) {}
+    fn update_one(&mut self, query: &serde_json::Value, update: &serde_json::Value, skip: i64, upsert: bool) -> std::result::Result<Option<Record>, String> {
+        let mut params = Vec::<rusqlite::types::Value>::new();
+        let update_bson_doc = bson::ser::to_document(&update).unwrap();
+        let mut bytes: Vec<u8> = Vec::new();
+        update_bson_doc.to_writer(&mut bytes).unwrap();
+        params.push(rusqlite::types::Value::Blob(bytes));
+
+        let where_str: String = QueryTranslator {}.query_document(&query, &mut params).unwrap();
+
+        if upsert {
+            if self.config.should_log_last_modified {
+                let mut stmt = self
+                    .db
+                    .prepare_cached(&format!(
+                        "INSERT INTO [{}] (_id, raw, _last_modified) VALUES ( (SELECT _id FROM [{}] {} LIMIT 1 {}) ,json_patch_from_empty(?1), datetime('now')) ON CONFLICT (_id) DO UPDATE SET raw=json_patch(raw,?1), _last_modified=datetime('now') RETURNING *;",
+                        &self.table_name,
+                        &self.table_name,
+                        if where_str.len() > 0 { format!("WHERE {}", &where_str) } else { String::from("") },
+                        if skip != 0 { format!("OFFSET {}", skip) } else { String::from("") }
+                    ))
+                    .unwrap();
+
+                match stmt.query_row(params_from_iter(params.iter()), |row| {
+                    let id = row.get::<_, i64>(0).unwrap();
+                    let bson_doc: bson::Document = bson::from_reader(row.get::<_, Vec<u8>>(1).unwrap().as_slice()).unwrap();
+                    let json_doc: serde_json::Value = bson::Bson::from(&bson_doc).into();
+                    match (self.config.should_hash_document, self.config.should_log_last_modified) {
+                        (false, false) => Ok(Some(Record {
+                            id: id,
+                            data: json_doc,
+                            hash: String::new(),
+                            last_modified: Utc.timestamp(0, 0),
+                        })),
+                        (true, false) => {
+                            let hash = row.get::<_, String>(2).unwrap();
+                            Ok(Some(Record { id: id, data: json_doc, hash: hash, last_modified: Utc.timestamp(0, 0) }))
+                        }
+                        (true, true) => {
+                            let hash = row.get::<_, String>(2).unwrap();
+                            let last_modified = row.get::<_, DateTime<Utc>>(3).unwrap();
+                            Ok(Some(Record { id: id, data: json_doc, hash: hash, last_modified: last_modified }))
+                        }
+                        (false, true) => {
+                            let last_modified = row.get::<_, DateTime<Utc>>(2).unwrap();
+                            Ok(Some(Record {
+                                id: id,
+                                data: json_doc,
+                                hash: String::new(),
+                                last_modified: last_modified,
+                            }))
+                        }
+                    }
+                }) {
+                    Ok(Some(record)) => Ok(Some(record)),
+                    Ok(None) => Ok(None),
+                    Err(e) => Err(e.to_string()),
+                }
+            } else {
+                let mut stmt = self
+                    .db
+                    .prepare_cached(&format!(
+                        "INSERT INTO [{}] (_id, raw) VALUES ( (SELECT _id FROM [{}] {} LIMIT 1 {}) ,json_patch_from_empty(?1)) ON CONFLICT (_id) DO UPDATE SET raw=json_patch(raw,?1) RETURNING *;",
+                        &self.table_name,
+                        &self.table_name,
+                        if where_str.len() > 0 { format!("WHERE {}", &where_str) } else { String::from("") },
+                        if skip != 0 { format!("OFFSET {}", skip) } else { String::from("") }
+                    ))
+                    .unwrap();
+
+                match stmt.query_row(params_from_iter(params.iter()), |row| {
+                    let id = row.get::<_, i64>(0).unwrap();
+                    let bson_doc: bson::Document = bson::from_reader(row.get::<_, Vec<u8>>(1).unwrap().as_slice()).unwrap();
+                    let json_doc: serde_json::Value = bson::Bson::from(&bson_doc).into();
+                    match (self.config.should_hash_document, self.config.should_log_last_modified) {
+                        (false, false) => Ok(Some(Record {
+                            id: id,
+                            data: json_doc,
+                            hash: String::new(),
+                            last_modified: Utc.timestamp(0, 0),
+                        })),
+                        (true, false) => {
+                            let hash = row.get::<_, String>(2).unwrap();
+                            Ok(Some(Record { id: id, data: json_doc, hash: hash, last_modified: Utc.timestamp(0, 0) }))
+                        }
+                        (true, true) => {
+                            let hash = row.get::<_, String>(2).unwrap();
+                            let last_modified = row.get::<_, DateTime<Utc>>(3).unwrap();
+                            Ok(Some(Record { id: id, data: json_doc, hash: hash, last_modified: last_modified }))
+                        }
+                        (false, true) => {
+                            let last_modified = row.get::<_, DateTime<Utc>>(2).unwrap();
+                            Ok(Some(Record {
+                                id: id,
+                                data: json_doc,
+                                hash: String::new(),
+                                last_modified: last_modified,
+                            }))
+                        }
+                    }
+                }) {
+                    Ok(Some(record)) => Ok(Some(record)),
+                    Ok(None) => Ok(None),
+                    Err(e) => Err(e.to_string()),
+                }
+            }
+        } else {
+            let mut stmt = self
+                .db
+                .prepare_cached(&format!(
+                    "UPDATE [{}] SET raw=json_patch(raw,?1), _last_modified=datetime('now') WHERE _id = (
+                    SELECT
+                        _id
+                    FROM
+                        [{}] 
+                    {} LIMIT 1 {}
+                ) RETURNING *;",
+                    &self.table_name,
+                    &self.table_name,
+                    if where_str.len() > 0 { format!("WHERE {}", &where_str) } else { String::from("") },
+                    if skip != 0 { format!("OFFSET {}", skip) } else { String::from("") }
+                ))
+                .unwrap();
+
+            match stmt.query_row(params_from_iter(params.iter()), |row| {
+                let id = row.get::<_, i64>(0).unwrap();
+                let bson_doc: bson::Document = bson::from_reader(row.get::<_, Vec<u8>>(1).unwrap().as_slice()).unwrap();
+                let json_doc: serde_json::Value = bson::Bson::from(&bson_doc).into();
+                match (self.config.should_hash_document, self.config.should_log_last_modified) {
+                    (false, false) => Ok(Some(Record {
+                        id: id,
+                        data: json_doc,
+                        hash: String::new(),
+                        last_modified: Utc.timestamp(0, 0),
+                    })),
+                    (true, false) => {
+                        let hash = row.get::<_, String>(2).unwrap();
+                        Ok(Some(Record { id: id, data: json_doc, hash: hash, last_modified: Utc.timestamp(0, 0) }))
+                    }
+                    (true, true) => {
+                        let hash = row.get::<_, String>(2).unwrap();
+                        let last_modified = row.get::<_, DateTime<Utc>>(3).unwrap();
+                        Ok(Some(Record { id: id, data: json_doc, hash: hash, last_modified: last_modified }))
+                    }
+                    (false, true) => {
+                        let last_modified = row.get::<_, DateTime<Utc>>(2).unwrap();
+                        Ok(Some(Record {
+                            id: id,
+                            data: json_doc,
+                            hash: String::new(),
+                            last_modified: last_modified,
+                        }))
+                    }
+                }
+            }) {
+                Ok(Some(record)) => Ok(Some(record)),
+                Ok(None) => Ok(None),
+                Err(e) => Err(e.to_string()),
+            }
+        }
+    }
+
     fn update_many(&mut self) {}
 }

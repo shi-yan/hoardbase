@@ -122,14 +122,14 @@ pub trait CollectionTrait {
    // fn find_and_modify(&mut self);
     fn get_indexes(&mut self) -> Result<Vec<serde_json::Value>, String>;
 
-    fn insert_one(&mut self, document: &serde_json::Value) -> std::result::Result<(), String>;
+    fn insert_one(&mut self, document: &serde_json::Value) -> std::result::Result<Option<Record>, String> ;
 
     fn insert_many(&mut self, documents: &Vec<serde_json::Value>) -> std::result::Result<(), String> ;
 
     fn reindex(&mut self) -> std::result::Result<(), String> ;
-    fn replace_one(&mut self, query: &serde_json::Value, replacement: &serde_json::Value, skip: i64) -> std::result::Result<(), String>;
+    fn replace_one(&mut self, query: &serde_json::Value, replacement: &serde_json::Value, skip: i64) -> std::result::Result<Option<Record>, String>;
 
-    fn update_one(&mut self);
+    fn update_one(&mut self, query: &serde_json::Value, update: &serde_json::Value, skip: i64, upsert: bool) -> std::result::Result<Option<Record>, String> ;
     fn update_many(&mut self);
 }
 

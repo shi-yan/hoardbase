@@ -169,5 +169,14 @@ fn main() {
 
     println!("find one and replace result {:?}", rr);
 
-    let rr2 = db.collection("test_collect.wef").unwrap().reindex().unwrap();
+    //    let rr2 = db.collection("test_collect.wef").unwrap().reindex().unwrap();
+
+    let rr3 = db.collection("test_collect.wef").unwrap().update_one(&json!({"age": 212}), &json!({"$set": {"test_struct.name": "updated name"}}), 0, false);
+
+    println!("update one result {:?}", rr3);
+
+    let rr4 = db.collection("test_collect.wef").unwrap().update_one(&json!({"age": 3212}), &json!({"$set": {"test_struct.name": "updated name"}}), 0, true);
+
+    println!("update one result {:?}", rr4);
+   
 }

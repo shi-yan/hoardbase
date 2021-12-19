@@ -1,16 +1,15 @@
-
+use crate::base::*;
+use crate::collection::Collection;
+use crate::transaction::TransactionCollection;
 use bson::Bson;
 use sha1::{Digest, Sha1};
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::error::Error;
 use std::fmt;
+use std::marker::PhantomData;
 use std::rc::Rc;
 use std::rc::Weak;
-use crate::transaction::TransactionCollection;
-use crate::collection::Collection;
-use std::marker::PhantomData;
-
-use crate::base::*;
 
 #[derive(Clone, Debug)]
 pub struct DatabaseConfig {
@@ -35,27 +34,45 @@ impl DatabaseConfig {
     }
 }
 
+#[derive(Debug)]
+struct UserFunctionError {
+    message: String,
+}
+
+impl fmt::Display for UserFunctionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", &self.message)
+    }
+}
+
+impl Error for UserFunctionError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        None
+    }
+}
+
 pub struct Database {
     config: DatabaseConfig,
     internal: rusqlite::Connection,
-    collections: HashMap<String, (String, CollectionConfig) >,
+    collections: HashMap<String, (String, CollectionConfig)>,
 }
 
 pub struct Transaction<'conn> {
     connection: rusqlite::Transaction<'conn>,
-    collections: HashMap<String, (String, CollectionConfig) >,
-  //  collections: HashMap<String, std::rc::Rc<std::cell::RefCell<dyn CollectionTrait>>>,
+    collections: HashMap<String, (String, CollectionConfig)>,
+    //  collections: HashMap<String, std::rc::Rc<std::cell::RefCell<dyn CollectionTrait>>>,
 }
 
-impl<'a> Transaction<'a>{
+impl<'a> Transaction<'a> {
     pub fn collection(&'a self, collection_name: &str) -> Result<TransactionCollection<'a>, &str> {
         if self.collections.contains_key(collection_name) {
             let (collection_name, collection_config) = self.collections.get(collection_name).unwrap();
-            Ok(TransactionCollection::<'a> {    
-                 config: collection_config.clone(),
-                 name: collection_name.clone(),
-                 db: &self.connection,
-                 table_name: collection_name.clone() })
+            Ok(TransactionCollection::<'a> {
+                config: collection_config.clone(),
+                name: collection_name.clone(),
+                db: &self.connection,
+                table_name: collection_name.clone(),
+            })
         } else {
             Err("No collection found")
         }
@@ -71,18 +88,38 @@ macro_rules! process_record {
     };
 }
 
+fn recursive_process_set(search_doc: &mut bson::Bson, split: &mut std::str::Split<&str>, value: &bson::Bson) -> bool {
+    if let Some(part) = split.next() {
+        if let Some(inner_doc) = search_doc.as_document() {
+            if !inner_doc.contains_key(part) {
+                search_doc.as_document_mut().unwrap().insert(part.to_string(), bson::Bson::Document(bson::Document::new()));
+            }
+        } else {
+            search_doc.as_document_mut().unwrap().remove(part.to_string());
+            search_doc.as_document_mut().unwrap().insert(part.to_string(), bson::Bson::Document(bson::Document::new()));
+        }
+
+        if let Some(bson_doc) = search_doc.as_document_mut().unwrap().get_mut(part) {
+            if recursive_process_set(bson_doc, split, value) {
+                search_doc.as_document_mut().unwrap().remove(part);
+                search_doc.as_document_mut().unwrap().insert(part.to_string(), value);
+            }
+        }
+        return false;
+    } else {
+        return true;
+    }
+}
 
 impl Database {
     pub fn open<'b>(config: &DatabaseConfig) -> std::result::Result<Database, &str> {
-        
-            let mut connection = Database {
-                config: config.clone(),
-                internal: rusqlite::Connection::open(config.path.clone()).unwrap() ,
-                collections: HashMap::new(),
-            };
-            connection.init();
-            Ok(connection)
-     
+        let mut connection = Database {
+            config: config.clone(),
+            internal: rusqlite::Connection::open(config.path.clone()).unwrap(),
+            collections: HashMap::new(),
+        };
+        connection.init();
+        Ok(connection)
     }
 
     pub fn path(&self) -> Option<String> {
@@ -90,7 +127,6 @@ impl Database {
     }
 
     fn init<'b>(&'b mut self) {
-
         if self.config.should_trace {
             self.internal.trace(Some(|statement| {
                 println!("trace: {}", statement);
@@ -165,6 +201,91 @@ impl Database {
             })
             .unwrap();
 
+        self.internal
+            .create_scalar_function("json_patch", 2, rusqlite::functions::FunctionFlags::SQLITE_UTF8 | rusqlite::functions::FunctionFlags::SQLITE_DETERMINISTIC, move |ctx| {
+                let original_blob = ctx.get_raw(0).as_blob().unwrap();
+
+                let mut original_doc: bson::Bson = bson::from_reader(original_blob).unwrap();
+
+                let update_blob = ctx.get_raw(1).as_blob().unwrap();
+
+                let update_doc: bson::Document = bson::from_reader(update_blob).unwrap();
+                //https://docs.mongodb.com/manual/reference/operator/update/#std-label-update-operators
+                for (key, value) in update_doc.iter() {
+                    match key.as_str() {
+                        "$currentDate" => {}
+                        "$inc" => {}
+                        "$min" => {}
+                        "$max" => {}
+                        "$mul" => {}
+                        "$rename" => {}
+                        "$set" => {
+                            if let bson::Bson::Document(doc) = value {
+                                for (key2, new_value) in doc.iter() {
+                                    let mut split = key2.split(".");
+                                    recursive_process_set(&mut original_doc, &mut split, &new_value);
+                                }
+                            }
+                        }
+                        "$setOnInsert" => {}
+                        "$unset" => {}
+                        _ => {
+                            return Err(rusqlite::Error::UserFunctionError(Box::new(UserFunctionError { message: "unknown update operator".to_string() })));
+                        }
+                    }
+
+                    let bson_doc = bson::ser::to_document(&original_doc).unwrap();
+                    let mut bytes: Vec<u8> = Vec::new();
+                    bson_doc.to_writer(&mut bytes).unwrap();
+                    return Ok(Some(rusqlite::types::Value::from(bytes)));
+                }
+
+                Err(rusqlite::Error::UserFunctionError(Box::new(UserFunctionError { message: "error".to_string() })))
+            })
+            .unwrap();
+
+        self.internal
+            .create_scalar_function("json_patch_from_empty", 1, rusqlite::functions::FunctionFlags::SQLITE_UTF8 | rusqlite::functions::FunctionFlags::SQLITE_DETERMINISTIC, move |ctx| {
+
+                let mut original_doc: bson::Bson = bson::Bson::Document(bson::Document::new());
+
+                let update_blob = ctx.get_raw(0).as_blob().unwrap();
+
+                let update_doc: bson::Document = bson::from_reader(update_blob).unwrap();
+                //https://docs.mongodb.com/manual/reference/operator/update/#std-label-update-operators
+                for (key, value) in update_doc.iter() {
+                    match key.as_str() {
+                        "$currentDate" => {}
+                        "$inc" => {}
+                        "$min" => {}
+                        "$max" => {}
+                        "$mul" => {}
+                        "$rename" => {}
+                        "$set" => {
+                            if let bson::Bson::Document(doc) = value {
+                                for (key2, new_value) in doc.iter() {
+                                    let mut split = key2.split(".");
+                                    recursive_process_set(&mut original_doc, &mut split, &new_value);
+                                }
+                            }
+                        }
+                        "$setOnInsert" => {}
+                        "$unset" => {}
+                        _ => {
+                            return Err(rusqlite::Error::UserFunctionError(Box::new(UserFunctionError { message: "unknown update operator".to_string() })));
+                        }
+                    }
+
+                    let bson_doc = bson::ser::to_document(&original_doc).unwrap();
+                    let mut bytes: Vec<u8> = Vec::new();
+                    bson_doc.to_writer(&mut bytes).unwrap();
+                    return Ok(Some(rusqlite::types::Value::from(bytes)));
+                }
+
+                Err(rusqlite::Error::UserFunctionError(Box::new(UserFunctionError { message: "error".to_string() })))
+            })
+            .unwrap();
+
         let tx = self.internal.transaction().unwrap();
         {
             tx.execute(
@@ -204,12 +325,9 @@ impl Database {
                     should_hash_unique: false,
                 };
 
-               // println!("{} {}", collection, table_name);
+                // println!("{} {}", collection, table_name);
 
-                self.collections.insert(collection.to_string(), 
-                (    collection.to_owned(),
-                    collection_config.to_owned(),
-                ));
+                self.collections.insert(collection.to_string(), (collection.to_owned(), collection_config.to_owned()));
             } else {
                 break;
             }
@@ -219,13 +337,13 @@ impl Database {
     pub fn create_collection<'a>(&'a mut self, collection_name: &str, config: &CollectionConfig) -> Result<Collection<'a>, &str> {
         if self.collections.contains_key(collection_name) {
             let (collection_name, collection_config) = self.collections.get(collection_name).unwrap();
-            Ok(Collection::<'a> {    
-                 config: collection_config.clone(),
-                 name: collection_name.clone(),
-                 db: &self.internal,
-                 table_name: collection_name.clone() })
+            Ok(Collection::<'a> {
+                config: collection_config.clone(),
+                name: collection_name.clone(),
+                db: &self.internal,
+                table_name: collection_name.clone(),
+            })
         } else {
-          
             let tx = self.internal.transaction().unwrap();
 
             {
@@ -270,27 +388,26 @@ impl Database {
             }
             tx.commit().unwrap();
 
-            self.collections.insert(collection_name.to_string(), 
-            (    collection_name.to_owned(),
-            config.to_owned(),
-            ));
-        
-            Ok(Collection::<'a> {    
+            self.collections.insert(collection_name.to_string(), (collection_name.to_owned(), config.to_owned()));
+
+            Ok(Collection::<'a> {
                 config: config.clone(),
                 name: collection_name.to_string(),
                 db: &self.internal,
-                table_name: collection_name.to_string() })
+                table_name: collection_name.to_string(),
+            })
         }
     }
 
     pub fn collection<'a>(&'a mut self, collection_name: &str) -> Result<Collection<'a>, &str> {
         if self.collections.contains_key(collection_name) {
             let (collection_name, collection_config) = self.collections.get(collection_name).unwrap();
-            Ok(Collection::<'a> {    
-                 config: collection_config.clone(),
-                 name: collection_name.clone(),
-                 db: &self.internal,
-                 table_name: collection_name.clone() })
+            Ok(Collection::<'a> {
+                config: collection_config.clone(),
+                name: collection_name.clone(),
+                db: &self.internal,
+                table_name: collection_name.clone(),
+            })
         } else {
             Err("No collection found")
         }
@@ -307,38 +424,27 @@ impl Database {
     pub fn drop_collection(&self) {}
     pub fn rename_collection(&self) {}
 
-    pub fn transaction<'a, F>(&'a mut self, f: F) -> Result<(), &str> 
-        where F: FnOnce(& Transaction) -> Result<(), &'static str>
+    pub fn transaction<'a, F>(&'a mut self, f: F) -> Result<(), &str>
+    where
+        F: FnOnce(&Transaction) -> Result<(), &'static str>,
     {
-       
         {
-           // let mut conn = self.internal;
-            
-                let t = self.internal.transaction().unwrap();
-                let mut transaction = Transaction {
-                    connection: t,
-                    collections: HashMap::new(),
-                };
-              //  let tx =  TransactionInternal::<'a>{ connection: t  };
-            
+            // let mut conn = self.internal;
 
-      //  let tx_weak = std::rc::Rc::downgrade(&tx);
+            let t = self.internal.transaction().unwrap();
+            let mut transaction = Transaction { connection: t, collections: HashMap::new() };
+            //  let tx =  TransactionInternal::<'a>{ connection: t  };
 
-        for (key, value) in &self.collections {
-            transaction.collections.insert(key.to_string(), (
-        
-                 key.to_string(),
-                 value.1.clone(),
-            ));
+            //  let tx_weak = std::rc::Rc::downgrade(&tx);
+
+            for (key, value) in &self.collections {
+                transaction.collections.insert(key.to_string(), (key.to_string(), value.1.clone()));
+            }
+
+            f(&transaction).unwrap();
+            transaction.connection.commit().unwrap();
         }
-
- 
-
-        f(&transaction).unwrap();
-        transaction.connection.commit().unwrap();
-        }
-       // tx.commit().unwrap();
-     
+        // tx.commit().unwrap();
         Err("Not implemented")
     }
 }

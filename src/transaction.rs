@@ -73,7 +73,7 @@ impl<'conn> CollectionTrait for TransactionCollection<'conn> {
         Err("afd".to_string())
     }
 
-    fn insert_one(&mut self, document: &serde_json::Value) -> std::result::Result<(), String>{
+    fn insert_one(&mut self, document: &serde_json::Value) -> std::result::Result<Option<Record>, String>{
         Err("afd".to_string())
     }
 
@@ -84,11 +84,13 @@ impl<'conn> CollectionTrait for TransactionCollection<'conn> {
     fn reindex(&mut self) -> std::result::Result<(), String> {
         Err("afd".to_string())
     }
-    fn replace_one(&mut self, query: &serde_json::Value, replacement: &serde_json::Value, skip: i64) -> std::result::Result<(), String>{
+    fn replace_one(&mut self, query: &serde_json::Value, replacement: &serde_json::Value, skip: i64) -> std::result::Result<Option<Record>, String>{
         Err("afd".to_string())
     }
 
-    fn update_one(&mut self){}
+    fn update_one(&mut self, query: &serde_json::Value, update: &serde_json::Value, skip: i64, upsert: bool) -> std::result::Result<Option<Record>, String>{
+        Err("ada".to_string())
+    }
     fn update_many(&mut self){}
 
 }
