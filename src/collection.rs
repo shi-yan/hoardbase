@@ -549,7 +549,7 @@ impl<'a> CollectionTrait for Collection<'a> {
                 let mut stmt = self
                     .db
                     .prepare_cached(&format!(
-                        "INSERT INTO [{}] (_id, raw, _last_modified) VALUES ( (SELECT _id FROM [{}] {} LIMIT 1 {}) ,json_patch_from_empty(?1), datetime('now')) ON CONFLICT (_id) DO UPDATE SET raw=json_patch(raw,?1), _last_modified=datetime('now') RETURNING *;",
+                        "INSERT INTO [{}] (_id, raw, _last_modified) VALUES ( (SELECT _id FROM [{}] {} LIMIT 1 {}) ,json_patch(NULL, ?1), datetime('now')) ON CONFLICT (_id) DO UPDATE SET raw=json_patch(raw,?1), _last_modified=datetime('now') RETURNING *;",
                         &self.table_name,
                         &self.table_name,
                         if where_str.len() > 0 { format!("WHERE {}", &where_str) } else { String::from("") },
@@ -596,7 +596,7 @@ impl<'a> CollectionTrait for Collection<'a> {
                 let mut stmt = self
                     .db
                     .prepare_cached(&format!(
-                        "INSERT INTO [{}] (_id, raw) VALUES ( (SELECT _id FROM [{}] {} LIMIT 1 {}) ,json_patch_from_empty(?1)) ON CONFLICT (_id) DO UPDATE SET raw=json_patch(raw,?1) RETURNING *;",
+                        "INSERT INTO [{}] (_id, raw) VALUES ( (SELECT _id FROM [{}] {} LIMIT 1 {}) ,json_patch(NULL, ?1)) ON CONFLICT (_id) DO UPDATE SET raw=json_patch(raw,?1) RETURNING *;",
                         &self.table_name,
                         &self.table_name,
                         if where_str.len() > 0 { format!("WHERE {}", &where_str) } else { String::from("") },

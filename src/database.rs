@@ -10,6 +10,19 @@ use std::fmt;
 use std::marker::PhantomData;
 use std::rc::Rc;
 use std::rc::Weak;
+use chrono::prelude::*;
+
+enum UpdateOperator {
+    Set,
+    Unset,
+    Inc,
+    Min,
+    Max,
+    CurrentDate,
+    Mul,
+    Rename,
+    SetOnInsert,
+}
 
 #[derive(Clone, Debug)]
 pub struct DatabaseConfig {
@@ -88,7 +101,7 @@ macro_rules! process_record {
     };
 }
 
-fn recursive_process_set(search_doc: &mut bson::Bson, split: &mut std::str::Split<&str>, value: &bson::Bson) -> bool {
+fn recursive_process(search_doc: &mut bson::Bson, split: &mut std::str::Split<&str>, operator: &UpdateOperator, value: &bson::Bson) -> Result<bool, String> {
     if let Some(part) = split.next() {
         if let Some(inner_doc) = search_doc.as_document() {
             if !inner_doc.contains_key(part) {
@@ -100,14 +113,128 @@ fn recursive_process_set(search_doc: &mut bson::Bson, split: &mut std::str::Spli
         }
 
         if let Some(bson_doc) = search_doc.as_document_mut().unwrap().get_mut(part) {
-            if recursive_process_set(bson_doc, split, value) {
-                search_doc.as_document_mut().unwrap().remove(part);
-                search_doc.as_document_mut().unwrap().insert(part.to_string(), value);
+            if let Ok(r) = recursive_process(bson_doc, split, operator, value) {
+                if r {
+                    match operator {
+                        UpdateOperator::Set => {
+                            search_doc.as_document_mut().unwrap().remove(part);
+                            search_doc.as_document_mut().unwrap().insert(part.to_string(), value);
+                            return Ok(false);
+                        }
+
+                        UpdateOperator::Inc => {
+                            let original_data = search_doc.as_document().unwrap().get(part).unwrap();
+                            if original_data.element_type() == bson::spec::ElementType::Double {  
+                                let d1: f64 = original_data.as_f64().unwrap();
+                                if let bson::Bson::Double(d2) = value {
+                                    search_doc.as_document_mut().unwrap().remove(part);
+                                    search_doc.as_document_mut().unwrap().insert(part.to_string(), bson::Bson::Double(d1 + d2));
+                                    return Ok(false);
+                                }
+                            } else if original_data.element_type() == bson::spec::ElementType::Int64 {
+                                let i1: i64 = original_data.as_i64().unwrap();
+                                if let bson::Bson::Int64(i2) = value {
+                                    search_doc.as_document_mut().unwrap().remove(part);
+                                    search_doc.as_document_mut().unwrap().insert(part.to_string(), bson::Bson::Int64(i1 + i2));
+                                    return Ok(false);
+                                }
+                            } else {
+                                return Err("incorrect data type for operator inc".to_string());
+                            }
+                        }
+
+                        UpdateOperator::Min => {
+                            let original_data = search_doc.as_document().unwrap().get(part).unwrap();
+                            if original_data.element_type() == bson::spec::ElementType::Double {  
+                                let d1: f64 = original_data.as_f64().unwrap();
+                                if let bson::Bson::Double(d2) = value {
+                                    search_doc.as_document_mut().unwrap().remove(part);
+                                    search_doc.as_document_mut().unwrap().insert(part.to_string(), bson::Bson::Double( d1.min(*d2)));
+                                    return Ok(false);
+                                }
+                            } else if original_data.element_type() == bson::spec::ElementType::Int64 {
+                                let i1: i64 = original_data.as_i64().unwrap();
+                                if let bson::Bson::Int64(i2) = value {
+                                    search_doc.as_document_mut().unwrap().remove(part);
+                                    search_doc.as_document_mut().unwrap().insert(part.to_string(), bson::Bson::Int64(  i1.min(*i2)));
+                                    return Ok(false);
+                                }
+                            } else {
+                                return Err("incorrect data type for operator min".to_string());
+                            }
+                        }
+
+                        UpdateOperator::Max => {
+                            let original_data = search_doc.as_document().unwrap().get(part).unwrap();
+                            if original_data.element_type() == bson::spec::ElementType::Double {  
+                                let d1: f64 = original_data.as_f64().unwrap();
+                                if let bson::Bson::Double(d2) = value {
+                                    search_doc.as_document_mut().unwrap().remove(part);
+                                    search_doc.as_document_mut().unwrap().insert(part.to_string(), bson::Bson::Double( d1.max(*d2)));
+                                    return Ok(false);
+                                }
+                            } else if original_data.element_type() == bson::spec::ElementType::Int64 {
+                                let i1: i64 = original_data.as_i64().unwrap();
+                                if let bson::Bson::Int64(i2) = value {
+                                    search_doc.as_document_mut().unwrap().remove(part);
+                                    search_doc.as_document_mut().unwrap().insert(part.to_string(), bson::Bson::Int64(  i1.max(*i2)));
+                                    return Ok(false);
+                                }
+                            } else {
+                                return Err("incorrect data type for operator max".to_string());
+                            }
+                        }
+
+                        UpdateOperator::Mul => {
+                            let original_data = search_doc.as_document().unwrap().get(part).unwrap();
+                            if original_data.element_type() == bson::spec::ElementType::Double {  
+                                let d1: f64 = original_data.as_f64().unwrap();
+                                if let bson::Bson::Double(d2) = value {
+                                    search_doc.as_document_mut().unwrap().remove(part);
+                                    search_doc.as_document_mut().unwrap().insert(part.to_string(), bson::Bson::Double( d1 *d2));
+                                    return Ok(false);
+                                }
+                            } else if original_data.element_type() == bson::spec::ElementType::Int64 {
+                                let i1: i64 = original_data.as_i64().unwrap();
+                                if let bson::Bson::Int64(i2) = value {
+                                    search_doc.as_document_mut().unwrap().remove(part);
+                                    search_doc.as_document_mut().unwrap().insert(part.to_string(), bson::Bson::Int64(  i1 *i2));
+                                    return Ok(false);
+                                }
+                            } else {
+                                return Err("incorrect data type for operator max".to_string());
+                            }
+                        }
+
+
+                        UpdateOperator::CurrentDate => {
+                            
+                            if value.element_type() == bson::spec::ElementType::String {
+                                let date_type = value.as_str().unwrap();
+                                if date_type == "date" || date_type == "timestamp" {
+                                    search_doc.as_document_mut().unwrap().remove(part);
+                                    let utc: DateTime<Utc> = Utc::now(); 
+                                    search_doc.as_document_mut().unwrap().insert(part.to_string(), bson::DateTime::from(utc));
+                                    return Ok(false);
+                                }
+                                else {
+                                    return Err("incorrect date type for operator CurrentDate".to_string());
+                                }
+                            } else {
+                                return Err("incorrect data type for operator CurrentDate".to_string());
+                            }
+                        }
+
+                        _ => {}
+                    }
+                } else {
+                    return Ok(false);
+                }
             }
         }
-        return false;
+        return Ok(false);
     } else {
-        return true;
+        return Ok(true);
     }
 }
 
@@ -203,86 +330,68 @@ impl Database {
 
         self.internal
             .create_scalar_function("json_patch", 2, rusqlite::functions::FunctionFlags::SQLITE_UTF8 | rusqlite::functions::FunctionFlags::SQLITE_DETERMINISTIC, move |ctx| {
-                let original_blob = ctx.get_raw(0).as_blob().unwrap();
+                let mut original_doc: bson::Bson = bson::Bson::Document(bson::Document::new());
 
-                let mut original_doc: bson::Bson = bson::from_reader(original_blob).unwrap();
+                if ctx.get_raw(0) == rusqlite::types::ValueRef::Null {
+                    let original_blob = ctx.get_raw(0).as_blob().unwrap();
+                    original_doc = bson::from_reader(original_blob).unwrap();
+                }
 
                 let update_blob = ctx.get_raw(1).as_blob().unwrap();
 
                 let update_doc: bson::Document = bson::from_reader(update_blob).unwrap();
                 //https://docs.mongodb.com/manual/reference/operator/update/#std-label-update-operators
                 for (key, value) in update_doc.iter() {
-                    match key.as_str() {
-                        "$currentDate" => {}
-                        "$inc" => {}
-                        "$min" => {}
-                        "$max" => {}
-                        "$mul" => {}
-                        "$rename" => {}
-                        "$set" => {
-                            if let bson::Bson::Document(doc) = value {
-                                for (key2, new_value) in doc.iter() {
-                                    let mut split = key2.split(".");
-                                    recursive_process_set(&mut original_doc, &mut split, &new_value);
-                                }
-                            }
+                   let operation:UpdateOperator =  match key.as_str() {
+                        "$currentDate" => {
+                            UpdateOperator::CurrentDate
                         }
-                        "$setOnInsert" => {}
-                        "$unset" => {}
+                        "$inc" => {
+                            UpdateOperator::Inc
+                        }
+                        "$min" => {
+                            UpdateOperator::Min
+                        }
+                        "$max" => {
+                            UpdateOperator::Max
+                        }
+                        "$mul" => {
+                            UpdateOperator::Mul
+                        }
+                        "$rename" => {
+                            UpdateOperator::Rename
+                        }
+                        "$set" => {
+                            UpdateOperator::Set
+                        }
+                        "$setOnInsert" => {
+                            UpdateOperator::SetOnInsert
+                        }
+                        "$unset" => {
+                            UpdateOperator::Unset
+                        }
                         _ => {
                             return Err(rusqlite::Error::UserFunctionError(Box::new(UserFunctionError { message: "unknown update operator".to_string() })));
                         }
-                    }
+                    };
 
-                    let bson_doc = bson::ser::to_document(&original_doc).unwrap();
-                    let mut bytes: Vec<u8> = Vec::new();
-                    bson_doc.to_writer(&mut bytes).unwrap();
-                    return Ok(Some(rusqlite::types::Value::from(bytes)));
-                }
-
-                Err(rusqlite::Error::UserFunctionError(Box::new(UserFunctionError { message: "error".to_string() })))
-            })
-            .unwrap();
-
-        self.internal
-            .create_scalar_function("json_patch_from_empty", 1, rusqlite::functions::FunctionFlags::SQLITE_UTF8 | rusqlite::functions::FunctionFlags::SQLITE_DETERMINISTIC, move |ctx| {
-
-                let mut original_doc: bson::Bson = bson::Bson::Document(bson::Document::new());
-
-                let update_blob = ctx.get_raw(0).as_blob().unwrap();
-
-                let update_doc: bson::Document = bson::from_reader(update_blob).unwrap();
-                //https://docs.mongodb.com/manual/reference/operator/update/#std-label-update-operators
-                for (key, value) in update_doc.iter() {
-                    match key.as_str() {
-                        "$currentDate" => {}
-                        "$inc" => {}
-                        "$min" => {}
-                        "$max" => {}
-                        "$mul" => {}
-                        "$rename" => {}
-                        "$set" => {
-                            if let bson::Bson::Document(doc) = value {
-                                for (key2, new_value) in doc.iter() {
-                                    let mut split = key2.split(".");
-                                    recursive_process_set(&mut original_doc, &mut split, &new_value);
-                                }
+                    if let bson::Bson::Document(doc) = value {
+                        for (key2, new_value) in doc.iter() {
+                            let mut split = key2.split(".");
+                            if let Err(e) = recursive_process(&mut original_doc, &mut split, &operation, &new_value) {
+                                return Err(rusqlite::Error::UserFunctionError(Box::new(UserFunctionError { message: e })));
                             }
                         }
-                        "$setOnInsert" => {}
-                        "$unset" => {}
-                        _ => {
-                            return Err(rusqlite::Error::UserFunctionError(Box::new(UserFunctionError { message: "unknown update operator".to_string() })));
-                        }
                     }
 
-                    let bson_doc = bson::ser::to_document(&original_doc).unwrap();
-                    let mut bytes: Vec<u8> = Vec::new();
-                    bson_doc.to_writer(&mut bytes).unwrap();
-                    return Ok(Some(rusqlite::types::Value::from(bytes)));
                 }
 
-                Err(rusqlite::Error::UserFunctionError(Box::new(UserFunctionError { message: "error".to_string() })))
+                let bson_doc = bson::ser::to_document(&original_doc).unwrap();
+                let mut bytes: Vec<u8> = Vec::new();
+                bson_doc.to_writer(&mut bytes).unwrap();
+                return Ok(Some(rusqlite::types::Value::from(bytes)));
+
+                
             })
             .unwrap();
 
