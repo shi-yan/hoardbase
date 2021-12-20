@@ -641,6 +641,7 @@ impl<'a> CollectionTrait for Collection<'a> {
                 }
             }
         } else {
+             // todo: this doesn't handle should_log_last_modified == false
             let mut stmt = self
                 .db
                 .prepare_cached(&format!(
@@ -696,5 +697,118 @@ impl<'a> CollectionTrait for Collection<'a> {
         }
     }
 
-    fn update_many(&mut self) {}
+    fn update_many(&mut self, query: &serde_json::Value, update: &serde_json::Value, limit: i64, skip: i64, upsert: bool) -> Result<i64, String> {
+        let mut params = Vec::<rusqlite::types::Value>::new();
+        let update_bson_doc = bson::ser::to_document(&update).unwrap();
+        let mut bytes: Vec<u8> = Vec::new();
+        update_bson_doc.to_writer(&mut bytes).unwrap();
+        params.push(rusqlite::types::Value::Blob(bytes));
+
+        let where_str: String = QueryTranslator {}.query_document(&query, &mut params).unwrap();
+
+        if upsert {
+            if self.config.should_log_last_modified {
+                let mut stmt = self
+                .db
+                .prepare_cached(&format!(
+                    "SAVEPOINT updatemany; UPDATE [{}] SET raw=json_patch(raw,?1), _last_modified=datetime('now') 
+                    {} {} {}; SELECT changes(); RELEASE SAVEPOINT updatemany;",
+                    &self.table_name,
+                    if where_str.len() > 0 { format!("WHERE {}", &where_str) } else { String::from("") },
+                    if limit != 0 { format!("LIMIT {}", limit) } else { String::from("") },
+                    if skip != 0 { format!("OFFSET {}", skip) } else { String::from("") }
+                ))
+                .unwrap();
+
+                match stmt.query_row(params_from_iter(params.iter()) , |row| {
+                    let id = row.get::<_, i64>(0).unwrap();
+                    Ok(id)
+                }) {
+                    Ok(record) => {
+                        if record == 0 {
+                            let mut stmt = self
+                            .db
+                            .prepare_cached(&format!(
+                                "INSERT INTO [{}] (raw, _last_modified) VALUES (json_patch(NULL, ?1), datetime('now')) RETURNING _id;",
+                                &self.table_name))
+                            .unwrap();
+
+                            match stmt.query_row(params_from_iter(params.iter()), |row| {
+                                let id = row.get::<_, i64>(0).unwrap();
+                                Ok(id)
+                            }) {
+                                Ok(record) => {Ok(1)},
+                                Err(e) => Err(e.to_string()),
+                            }
+                        }
+                        else {
+                            Ok(record)
+                        }
+                    },
+                    Err(e) => Err(e.to_string()),
+                }
+            } else {
+                let mut stmt = self
+                .db
+                .prepare_cached(&format!(
+                    "SAVEPOINT updatemany; UPDATE [{}] SET raw=json_patch(raw,?1) 
+                    {} {} {}; SELECT changes(); RELEASE SAVEPOINT updatemany;",
+                    &self.table_name,
+                    if where_str.len() > 0 { format!("WHERE {}", &where_str) } else { String::from("") },
+                    if limit != 0 { format!("LIMIT {}", limit) } else { String::from("") },
+                    if skip != 0 { format!("OFFSET {}", skip) } else { String::from("") }
+                ))
+                .unwrap();
+
+                match stmt.query_row(params_from_iter(params.iter()) , |row| {
+                    let id = row.get::<_, i64>(0).unwrap();
+                    Ok(id)
+                }) {
+                    Ok(record) => {
+                        if record == 0 {
+                            let mut stmt = self
+                            .db
+                            .prepare_cached(&format!(
+                                "INSERT INTO [{}] (raw) VALUES (json_patch(NULL, ?1)) RETURNING _id;",
+                                &self.table_name))
+                            .unwrap();
+
+                            match stmt.query_row(params_from_iter(params.iter()), |row| {
+                                let id = row.get::<_, i64>(0).unwrap();
+                                Ok(id)
+                            }) {
+                                Ok(record) => {Ok(1)},
+                                Err(e) => Err(e.to_string()),
+                            }
+                        }
+                        else {
+                            Ok(record)
+                        }
+                    },
+                    Err(e) => Err(e.to_string()),
+                }
+            }
+        } else {
+            // todo: this doesn't handle should_log_last_modified == false
+            let mut stmt = self
+                .db
+                .prepare_cached(&format!(
+                    "SAVEPOINT updatemany; UPDATE [{}] SET raw=json_patch(raw,?1), _last_modified=datetime('now') 
+                    {} {} {}; SELECT changes(); RELEASE SAVEPOINT updatemany;",
+                    &self.table_name,
+                    if where_str.len() > 0 { format!("WHERE {}", &where_str) } else { String::from("") },
+                    if limit != 0 {format!("LIMIT {}", limit) } else { String::from("") },
+                    if skip != 0 { format!("OFFSET {}", skip) } else { String::from("") }
+                ))
+                .unwrap();
+
+            match stmt.query_row(params_from_iter(params.iter()), |row| {
+                let id = row.get::<_, i64>(0).unwrap();
+                Ok(id)
+            }) {
+                Ok(record) => Ok(record),
+                Err(e) => Err(e.to_string()),
+            }
+        }
+    }
 }

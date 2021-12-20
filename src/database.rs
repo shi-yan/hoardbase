@@ -22,6 +22,12 @@ enum UpdateOperator {
     Mul,
     Rename,
     SetOnInsert,
+    AddToSet,
+    Pop,
+    Pull,
+    Push,
+    PullAll,
+    Bit,
 }
 
 #[derive(Clone, Debug)]
@@ -238,6 +244,31 @@ fn recursive_process(search_doc: &mut bson::Bson, split: &mut std::str::Split<&s
                             }
                         }
 
+                        UpdateOperator::Pop => {
+                            if let bson::Bson::Int32(pos) = value {
+                                if *pos == 1 {
+                                    search_doc.as_array_mut().unwrap().pop();
+                                }
+                                else if *pos == -1 {
+                                    search_doc.as_array_mut().unwrap().remove(0);
+                                }
+                                else {
+                                    return Err("incorrect position for operator Pop".to_string());
+                                }
+                            }
+                            else {
+                                return Err("incorrect data type for operator Pop".to_string());
+                            }
+                        }
+
+                        UpdateOperator::Push => {
+                            let original_data = search_doc.as_document().unwrap().get(part).unwrap().clone();
+
+                            search_doc.as_array_mut().unwrap().push(original_data);
+                        }
+                        //https://docs.mongodb.com/manual/reference/operator/update-array/
+                        // todo: implement PushAll/pull $in, $each $position etc. 
+                        // todo: implement bitwise operators $bit
                         _ => {}
                     }
                 } else {
@@ -278,7 +309,7 @@ impl Database {
                 println!("profile: {} {} nanos", statement, duration.as_nanos());
             }));
         }
-
+        // todo: need to change to bson_field
         self.internal
             .create_scalar_function("json_field", 2, rusqlite::functions::FunctionFlags::SQLITE_UTF8 | rusqlite::functions::FunctionFlags::SQLITE_DETERMINISTIC, move |ctx| {
                 assert_eq!(ctx.len(), 2, "called with unexpected number of arguments");
@@ -340,7 +371,7 @@ impl Database {
                 Ok(Some(hex_string))
             })
             .unwrap();
-
+        // todo: need to change to bson_patch
         self.internal
             .create_scalar_function("json_patch", 2, rusqlite::functions::FunctionFlags::SQLITE_UTF8 | rusqlite::functions::FunctionFlags::SQLITE_DETERMINISTIC, move |ctx| {
                 let mut original_doc: bson::Bson = bson::Bson::Document(bson::Document::new());
@@ -373,6 +404,12 @@ impl Database {
                             }
                         }
                         "$unset" => UpdateOperator::Unset,
+                        "$addToSet" => UpdateOperator::AddToSet,
+                        "$pop" => UpdateOperator::Pop,
+                        "$pull" => UpdateOperator::Pull,
+                        "$push" => UpdateOperator::Push,
+                        "$pullAll" => UpdateOperator::PullAll,
+                        "$bit" => UpdateOperator::Bit,
                         _ => {
                             return Err(rusqlite::Error::UserFunctionError(Box::new(UserFunctionError { message: "unknown update operator".to_string() })));
                         }

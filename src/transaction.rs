@@ -91,6 +91,8 @@ impl<'conn> CollectionTrait for TransactionCollection<'conn> {
     fn update_one(&mut self, query: &serde_json::Value, update: &serde_json::Value, skip: i64, upsert: bool) -> std::result::Result<Option<Record>, String>{
         Err("ada".to_string())
     }
-    fn update_many(&mut self){}
+    fn update_many(&mut self, query: &serde_json::Value, update: &serde_json::Value, limit: i64, skip: i64, upsert: bool) -> Result<i64, String>{
+        Err("afd".to_string())
+    }
 
 }
