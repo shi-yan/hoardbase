@@ -1,6 +1,6 @@
 # Hoardbase
 
-![crates.io](https://img.shields.io/crates/v/hoardbase.svg) ![docs.rs](https://img.shields.io/docsrs/hoardbase)
+[![crates.io](https://img.shields.io/crates/v/hoardbase.svg)](https://crates.io/crates/hoardbase) [![docs.rs](https://img.shields.io/docsrs/hoardbase)](https://docs.rs/hoardbase/0.1.0-alpha/hoardbase)
  
 Hoardbase is sqlite disguised as a NoSql database with an API similar to that of mongodb. There had been many times that I need a single-file embedded NoSql solution and couldn't find any. For my use cases, a good choice should meet the following requirements:
 
