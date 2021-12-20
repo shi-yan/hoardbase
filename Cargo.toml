@@ -2,7 +2,7 @@
 name = "hoardbase"
 version = "0.1.0"
 edition = "2021"
-# default-run = "core"
+# default-run = "hoardbase"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -25,5 +25,4 @@ name = "hoardmin"
 path = "src/hoardmin.rs"
 
 [lib]
-name = "core"
 path = "src/lib.rs"

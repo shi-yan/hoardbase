@@ -1,4 +1,16 @@
-//! A doc comment that applies to the implicit anonymous module of this crate
+//! ## Internals
+//! The key mechanism for storing and querying json data using sqlite is serializing json documents into the blob type. Currently [`bson`] is used for 
+//! as the serialization format. Another interesting format is [Amazon Ion](https://amzn.github.io/ion-docs/). I may add support for Ion in the future
+//! when its rust binding matures. 
+//! 
+//! Indexing and searching is implemented using sqlite's [application-defined functions](https://www.sqlite.org/appfunc.html). Basically, we can define
+//! custom functions to operate on the blob type to extract a json field, or patch the blob. As long as those custom functions are deterministic, they
+//! can be used for indexing and searching. For example, we could define a function `bson_filed(path, blob)` that extracts a json field from the blob.
+//! If we invoke this function with `WHERE bson_field('name.id', blob) = 3` on a document, we will find all documents with name.id equals to 3. We can
+//! also create indices on json fields using this function. For more references, these are some good links:
+//! [how to query json within a database](https://stackoverflow.com/questions/68447802/how-to-query-json-within-a-database)
+//! [sqlite json support](https://dgl.cx/2020/06/sqlite-json-support)
+
 
 use serde_json::json;
 use std::fs::File;
@@ -9,11 +21,11 @@ use base::SearchOption;
 use crate::base::CollectionTrait;
 
 
-mod base;
-mod collection;
-mod database;
-mod query_translator;
-mod transaction;
+pub mod base;
+pub mod collection;
+pub mod database;
+pub mod query_translator;
+pub mod transaction;
 
 
 

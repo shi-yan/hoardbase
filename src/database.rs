@@ -12,6 +12,7 @@ use std::marker::PhantomData;
 use std::rc::Rc;
 use std::rc::Weak;
 
+/// This is the operations that can be performed on a document. These operations are corresponding to the mongodb operations found on this page.
 enum UpdateOperator {
     Set,
     Unset,
@@ -30,29 +31,35 @@ enum UpdateOperator {
     Bit,
 }
 
+/// This struct can config a database. This struct uses the builder pattern.
 #[derive(Clone, Debug)]
 pub struct DatabaseConfig {
+    /// The filepath of the database.
     pub path: String,
+    /// Setting this to true will enable the tracing function. All composed SQL statements will be printed to the console.
     pub should_trace: bool,
+    /// Setting this to true will profile each SQL execution.
     pub should_profile: bool,
 }
 
 impl DatabaseConfig {
+    /// Creates a new DatabaseConfig with the given path.
     pub fn new(path: &str) -> Self {
         DatabaseConfig { path: String::from(path), should_trace: false, should_profile: false }
     }
-
+    /// Enables tracing.
     pub fn trace<'a>(&'a mut self, arg: bool) -> &'a mut DatabaseConfig {
         self.should_trace = arg;
         self
     }
-
+    /// Enable profiling.
     pub fn profile<'a>(&'a mut self, args: bool) -> &'a mut DatabaseConfig {
         self.should_profile = args;
         self
     }
 }
 
+/// This struct represents a custom error that can be thrown from a user defined sqlite function.
 #[derive(Debug)]
 struct UserFunctionError {
     message: String,
@@ -70,16 +77,28 @@ impl Error for UserFunctionError {
     }
 }
 
+/// The core struct that represents a database.
 pub struct Database {
+    /// The database config, including the database's filepath.
     config: DatabaseConfig,
+    /// This is the underneath sqlite connection.
     internal: rusqlite::Connection,
+    /// This is a hash table of the collections in the database. This hash table only contains collections' name and configurations. When a user wants to 
+    /// access a collection, we will construct a collection object dynamically. A collection object is a wrapper of the underlying sqlite connection, as
+    /// well as the collection's configurations.
+    /// 
+    /// The reason that we want to dynamically construct a collection object, instead of storing pre-constructed collection objects in this hash map, is
+    /// that a collection object needs to reference to the underlying sqlite connection. Self reference [is not easy](https://arunanshub.hashnode.dev/self-referential-structs-in-rust) in Rust.
     collections: HashMap<String, (String, CollectionConfig)>,
 }
 
+/// If a user wants to execute multiple statements in a Transaction, she needs to obtain a Transaction object first. This object provides a similar interface
+/// to that of a Database object. A user should be able to perform the same set operations on a Transaction object as a Database object.
 pub struct Transaction<'conn> {
+    /// The underlying sqlite transaction. This is created from the Database's internal sqlite connection, hence the lifetime.
     connection: rusqlite::Transaction<'conn>,
+    /// This is similar to the collections field found in the [`Database`] struct.
     collections: HashMap<String, (String, CollectionConfig)>,
-    //  collections: HashMap<String, std::rc::Rc<std::cell::RefCell<dyn CollectionTrait>>>,
 }
 
 impl<'a> Transaction<'a> {
