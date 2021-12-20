@@ -5,7 +5,7 @@ Hoardbase is sqlite disguised as a NoSql database with an API similar to that of
 1. It needs to be NoSql. This is convinent when data are dirty, which is common in the data ETL use case. Another benefit enabled by NoSql is less effort in implementing data backward compatibility. Even when a data schema can eventually be defined and a Sql database is desired, prototyping using NoSql is also easier.
 2. The database has to be embedable for easy deployment. In many use cases, for example, a standalone desktop app, end users might not have the skills for setting up and maintaining a database server.
 3. The database must be contained in a single file. This will guarantee data integrity and make data migration and backup easier for untrained users. 
-4. There should be cross-language support.
+4. There should be cross-language support (at least C/C++, Python, Rust and Nodejs).
 
 I feel that an embedable NoSql is a very common building block that lacks good choices. The cloest one, in my opinion, is ejdb2. However, that project is inactive and its code readability is poor. But what about this project? Sqlite is a solid fundation and has been battle tested. I try to keep my warpper layer simple and its internal well documented to make sure fixability. 
 
@@ -17,11 +17,13 @@ as the serialization format. Another interesting format is [Amazon Ion](https://
 when its rust binding matures. 
 
 Indexing and searching is implemented using sqlite's [application-defined functions](https://www.sqlite.org/appfunc.html). Basically, we can define
-custom functions to operate on the blob type to extract a json field, or patch the blob. As long as those custom functions are deterministic, they
-can be used for indexing and searching. For example, we could define a function `bson_filed(path, blob)` that extracts a json field from the blob.
+custom functions to operate on the blob type to extract a json field, or patch a blob. As long as those custom functions are deterministic, they
+can be used for indexing and searching. For example, we can define a function `bson_filed(path, blob)` that extracts a json field from the blob.
 If we invoke this function with `WHERE bson_field('name.id', blob) = 3` on a document, we will find all documents with name.id equals to 3. We can
 also create indices on json fields using this function. For more references, these are some good links:
+
 [how to query json within a database](https://stackoverflow.com/questions/68447802/how-to-query-json-within-a-database)
+
 [sqlite json support](https://dgl.cx/2020/06/sqlite-json-support)
 
 <!-- cargo-sync-readme end -->

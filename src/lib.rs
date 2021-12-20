@@ -4,11 +4,13 @@
 //! when its rust binding matures. 
 //! 
 //! Indexing and searching is implemented using sqlite's [application-defined functions](https://www.sqlite.org/appfunc.html). Basically, we can define
-//! custom functions to operate on the blob type to extract a json field, or patch the blob. As long as those custom functions are deterministic, they
-//! can be used for indexing and searching. For example, we could define a function `bson_filed(path, blob)` that extracts a json field from the blob.
+//! custom functions to operate on the blob type to extract a json field, or patch a blob. As long as those custom functions are deterministic, they
+//! can be used for indexing and searching. For example, we can define a function `bson_filed(path, blob)` that extracts a json field from the blob.
 //! If we invoke this function with `WHERE bson_field('name.id', blob) = 3` on a document, we will find all documents with name.id equals to 3. We can
 //! also create indices on json fields using this function. For more references, these are some good links:
+//! 
 //! [how to query json within a database](https://stackoverflow.com/questions/68447802/how-to-query-json-within-a-database)
+//! 
 //! [sqlite json support](https://dgl.cx/2020/06/sqlite-json-support)
 
 
