@@ -15,6 +15,7 @@ use crate::base::*;
 use crate::query_translator::QueryTranslator;
 use fallible_streaming_iterator::FallibleStreamingIterator;
 
+/// This function translate a json index descriptor into a SQL index descriptor
 fn translate_index_config(config: &serde_json::Value, scope: &str, fields: &mut Vec<(String, i8)>) -> std::result::Result<(), &'static str> {
     if config.is_object() {
         for (key, value) in config.as_object().unwrap().iter() {
@@ -39,11 +40,15 @@ fn translate_index_config(config: &serde_json::Value, scope: &str, fields: &mut 
     }
 }
 
-
+/// This struct represents a collection
 pub struct Collection<'a> {
+    /// The collection config
     pub config: CollectionConfig,
+    /// Collection name
     pub name: String,
+    /// This is the sqlite connection
     pub db: &'a rusqlite::Connection,
+    /// The sqlite table name for this collection. Not necessarily the same as the collection name.
     pub table_name: String,
 }
 
@@ -607,6 +612,8 @@ impl<'a> CollectionTrait for Collection<'a> {
         }
     }
 
+    /// This function update all documents match the `query` by the `update` object. If `upsert` is true, and no documents are found by
+    /// query, we will create a new document using the `update` object.
     fn update_many(&mut self, query: &serde_json::Value, update: &serde_json::Value, limit: i64, skip: i64, upsert: bool) -> Result<i64, String> {
         let mut params = Vec::<rusqlite::types::Value>::new();
         let update_bson_doc = bson::ser::to_document(&update).unwrap();

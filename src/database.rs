@@ -12,7 +12,7 @@ use std::marker::PhantomData;
 use std::rc::Rc;
 use std::rc::Weak;
 
-/// This is the operations that can be performed on a document. These operations are corresponding to the mongodb operations found on this page.
+/// This is the operations that can be performed on a bson document. These operations are corresponding to the mongodb operations found on this page.
 enum UpdateOperator {
     Set,
     Unset,
@@ -83,7 +83,7 @@ pub struct Database {
     config: DatabaseConfig,
     /// This is the underneath sqlite connection.
     internal: rusqlite::Connection,
-    /// This is a hash table of the collections in the database. This hash table only contains collections' name and configurations. When a user wants to 
+    /// This is a hash table of the existing collections in the database. This hash table only contains collections' name and configurations. When a user wants to 
     /// access a collection, we will construct a collection object dynamically. A collection object is a wrapper of the underlying sqlite connection, as
     /// well as the collection's configurations.
     /// 
@@ -102,6 +102,7 @@ pub struct Transaction<'conn> {
 }
 
 impl<'a> Transaction<'a> {
+    /// Access a collection given its name.
     pub fn collection(&'a self, collection_name: &str) -> Result<TransactionCollection<'a>, &str> {
         if self.collections.contains_key(collection_name) {
             let (collection_name, collection_config) = self.collections.get(collection_name).unwrap();
@@ -117,6 +118,8 @@ impl<'a> Transaction<'a> {
     }
 }
 
+/// This macro is for convenience. The purpose of this macro is to construct a callback function to process find results.
+/// Because the callback's signature is very complex, we recommend using this macro.
 #[macro_export]
 macro_rules! process_record {
     // `()` indicates that the macro takes no argument.
@@ -126,6 +129,8 @@ macro_rules! process_record {
     };
 }
 
+/// This function is called by the [`Collection::update_many()`] and [`Collection::update_one()`] functions. We use this function to recursively search for a json field by a path string. Then, based on the operator and value, we perform
+/// different operations on the document.
 fn recursive_process(search_doc: &mut bson::Bson, split: &mut std::str::Split<&str>, operator: &UpdateOperator, value: &bson::Bson) -> Result<bool, String> {
     if let Some(part) = split.next() {
         if let Some(inner_doc) = search_doc.as_document() {
@@ -312,10 +317,21 @@ impl Database {
         Ok(connection)
     }
 
+    /// Obtain the filepath of this database.
     pub fn path(&self) -> Option<String> {
         Some(self.config.path.clone())
     }
 
+    /// This is an internal function to initialize an empty database. The initialization steps include:
+    /// 
+    /// 1. Installing callbacks for tracing or profiling.
+    /// 
+    /// 2. Installing application-defined functions that are used for extracting bson field or patching bson document.
+    /// 
+    /// 3. Creating meta tables. There are two meta tables. One contains global info, such as database version. Another table
+    /// contains the list of existing collections and their configurations.
+    /// 
+    /// 4. Fetching exisiting collections from the collection meta table and populate the collection hashmap.
     fn init<'b>(&'b mut self) {
         if self.config.should_trace {
             self.internal.trace(Some(|statement| {
@@ -499,6 +515,7 @@ impl Database {
         }
     }
 
+    /// Create and return a collection given its config. The collection's properties ([`CollectionConfig::should_log_last_modified`], [`CollectionConfig::should_hash_document`]) can't be changed once created.
     pub fn create_collection<'a>(&'a mut self, collection_name: &str, config: &CollectionConfig) -> Result<Collection<'a>, &str> {
         if self.collections.contains_key(collection_name) {
             let (collection_name, collection_config) = self.collections.get(collection_name).unwrap();
@@ -564,6 +581,8 @@ impl Database {
         }
     }
 
+    /// Obtain an existing collection given a name. This function assemble a [`Collection`] object by combining
+    /// the collection's configuration and the [`Database::internal`] rusqlite connection
     pub fn collection<'a>(&'a mut self, collection_name: &str) -> Result<Collection<'a>, &str> {
         if self.collections.contains_key(collection_name) {
             let (collection_name, collection_config) = self.collections.get(collection_name).unwrap();
@@ -578,6 +597,7 @@ impl Database {
         }
     }
 
+    /// List existing collections
     pub fn list_collections(&self) -> Vec<(String, CollectionConfig)> {
         let mut collections = Vec::new();
         for collection in self.collections.values() {
@@ -586,9 +606,13 @@ impl Database {
         collections
     }
 
+    /// Drop a collection
     pub fn drop_collection(&self) {}
+
+    /// Rename collection
     pub fn rename_collection(&self) {}
 
+    /// Create a transaction
     pub fn transaction<'a, F>(&'a mut self, f: F) -> Result<(), &str>
     where
         F: FnOnce(&Transaction) -> Result<(), &'static str>,
