@@ -4,6 +4,7 @@ version = "0.1.0-alpha"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 description = "Hoardbase is a single-file embedded database based on sqlite with an API identical to that of mongodb."
+repository = "https://github.com/shi-yan/hoardbase"
 # default-run = "hoardbase"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
