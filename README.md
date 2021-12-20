@@ -1,5 +1,7 @@
 # Hoardbase
 
+![crates.io](https://img.shields.io/crates/v/hoardbase.svg) ![docs.rs](https://img.shields.io/docsrs/hoardbase)
+ 
 Hoardbase is sqlite disguised as a NoSql database with an API similar to that of mongodb. There had been many times that I need a single-file embedded NoSql solution and couldn't find any. For my use cases, a good choice should meet the following requirements:
 
 1. It needs to be NoSql. This is convinent when data are dirty, which is common in the data ETL use case. Another benefit enabled by NoSql is less effort in implementing data backward compatibility. Even when a data schema can eventually be defined and a Sql database is desired, prototyping using NoSql is also easier.
