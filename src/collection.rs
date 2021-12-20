@@ -39,6 +39,7 @@ fn translate_index_config(config: &serde_json::Value, scope: &str, fields: &mut 
     }
 }
 
+
 pub struct Collection<'a> {
     pub config: CollectionConfig,
     pub name: String,

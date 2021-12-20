@@ -2,7 +2,7 @@
 name = "hoardbase"
 version = "0.1.0"
 edition = "2021"
-default-run = "core"
+# default-run = "core"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -24,6 +24,6 @@ fallible-streaming-iterator = "0.1.9"
 name = "hoardmin"
 path = "src/hoardmin.rs"
 
-[[bin]]
+[lib]
 name = "core"
-path = "src/main.rs"
+path = "src/lib.rs"
