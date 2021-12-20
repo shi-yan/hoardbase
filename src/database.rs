@@ -2,6 +2,7 @@ use crate::base::*;
 use crate::collection::Collection;
 use crate::transaction::TransactionCollection;
 use bson::Bson;
+use chrono::prelude::*;
 use sha1::{Digest, Sha1};
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -10,7 +11,6 @@ use std::fmt;
 use std::marker::PhantomData;
 use std::rc::Rc;
 use std::rc::Weak;
-use chrono::prelude::*;
 
 enum UpdateOperator {
     Set,
@@ -124,7 +124,7 @@ fn recursive_process(search_doc: &mut bson::Bson, split: &mut std::str::Split<&s
 
                         UpdateOperator::Inc => {
                             let original_data = search_doc.as_document().unwrap().get(part).unwrap();
-                            if original_data.element_type() == bson::spec::ElementType::Double {  
+                            if original_data.element_type() == bson::spec::ElementType::Double {
                                 let d1: f64 = original_data.as_f64().unwrap();
                                 if let bson::Bson::Double(d2) = value {
                                     search_doc.as_document_mut().unwrap().remove(part);
@@ -145,18 +145,18 @@ fn recursive_process(search_doc: &mut bson::Bson, split: &mut std::str::Split<&s
 
                         UpdateOperator::Min => {
                             let original_data = search_doc.as_document().unwrap().get(part).unwrap();
-                            if original_data.element_type() == bson::spec::ElementType::Double {  
+                            if original_data.element_type() == bson::spec::ElementType::Double {
                                 let d1: f64 = original_data.as_f64().unwrap();
                                 if let bson::Bson::Double(d2) = value {
                                     search_doc.as_document_mut().unwrap().remove(part);
-                                    search_doc.as_document_mut().unwrap().insert(part.to_string(), bson::Bson::Double( d1.min(*d2)));
+                                    search_doc.as_document_mut().unwrap().insert(part.to_string(), bson::Bson::Double(d1.min(*d2)));
                                     return Ok(false);
                                 }
                             } else if original_data.element_type() == bson::spec::ElementType::Int64 {
                                 let i1: i64 = original_data.as_i64().unwrap();
                                 if let bson::Bson::Int64(i2) = value {
                                     search_doc.as_document_mut().unwrap().remove(part);
-                                    search_doc.as_document_mut().unwrap().insert(part.to_string(), bson::Bson::Int64(  i1.min(*i2)));
+                                    search_doc.as_document_mut().unwrap().insert(part.to_string(), bson::Bson::Int64(i1.min(*i2)));
                                     return Ok(false);
                                 }
                             } else {
@@ -166,18 +166,18 @@ fn recursive_process(search_doc: &mut bson::Bson, split: &mut std::str::Split<&s
 
                         UpdateOperator::Max => {
                             let original_data = search_doc.as_document().unwrap().get(part).unwrap();
-                            if original_data.element_type() == bson::spec::ElementType::Double {  
+                            if original_data.element_type() == bson::spec::ElementType::Double {
                                 let d1: f64 = original_data.as_f64().unwrap();
                                 if let bson::Bson::Double(d2) = value {
                                     search_doc.as_document_mut().unwrap().remove(part);
-                                    search_doc.as_document_mut().unwrap().insert(part.to_string(), bson::Bson::Double( d1.max(*d2)));
+                                    search_doc.as_document_mut().unwrap().insert(part.to_string(), bson::Bson::Double(d1.max(*d2)));
                                     return Ok(false);
                                 }
                             } else if original_data.element_type() == bson::spec::ElementType::Int64 {
                                 let i1: i64 = original_data.as_i64().unwrap();
                                 if let bson::Bson::Int64(i2) = value {
                                     search_doc.as_document_mut().unwrap().remove(part);
-                                    search_doc.as_document_mut().unwrap().insert(part.to_string(), bson::Bson::Int64(  i1.max(*i2)));
+                                    search_doc.as_document_mut().unwrap().insert(part.to_string(), bson::Bson::Int64(i1.max(*i2)));
                                     return Ok(false);
                                 }
                             } else {
@@ -187,18 +187,18 @@ fn recursive_process(search_doc: &mut bson::Bson, split: &mut std::str::Split<&s
 
                         UpdateOperator::Mul => {
                             let original_data = search_doc.as_document().unwrap().get(part).unwrap();
-                            if original_data.element_type() == bson::spec::ElementType::Double {  
+                            if original_data.element_type() == bson::spec::ElementType::Double {
                                 let d1: f64 = original_data.as_f64().unwrap();
                                 if let bson::Bson::Double(d2) = value {
                                     search_doc.as_document_mut().unwrap().remove(part);
-                                    search_doc.as_document_mut().unwrap().insert(part.to_string(), bson::Bson::Double( d1 *d2));
+                                    search_doc.as_document_mut().unwrap().insert(part.to_string(), bson::Bson::Double(d1 * d2));
                                     return Ok(false);
                                 }
                             } else if original_data.element_type() == bson::spec::ElementType::Int64 {
                                 let i1: i64 = original_data.as_i64().unwrap();
                                 if let bson::Bson::Int64(i2) = value {
                                     search_doc.as_document_mut().unwrap().remove(part);
-                                    search_doc.as_document_mut().unwrap().insert(part.to_string(), bson::Bson::Int64(  i1 *i2));
+                                    search_doc.as_document_mut().unwrap().insert(part.to_string(), bson::Bson::Int64(i1 * i2));
                                     return Ok(false);
                                 }
                             } else {
@@ -206,22 +206,35 @@ fn recursive_process(search_doc: &mut bson::Bson, split: &mut std::str::Split<&s
                             }
                         }
 
-
                         UpdateOperator::CurrentDate => {
-                            
                             if value.element_type() == bson::spec::ElementType::String {
                                 let date_type = value.as_str().unwrap();
+                                // todo timestamp is not implemented yet
                                 if date_type == "date" || date_type == "timestamp" {
                                     search_doc.as_document_mut().unwrap().remove(part);
-                                    let utc: DateTime<Utc> = Utc::now(); 
+                                    let utc: DateTime<Utc> = Utc::now();
                                     search_doc.as_document_mut().unwrap().insert(part.to_string(), bson::DateTime::from(utc));
                                     return Ok(false);
-                                }
-                                else {
+                                } else {
                                     return Err("incorrect date type for operator CurrentDate".to_string());
                                 }
                             } else {
                                 return Err("incorrect data type for operator CurrentDate".to_string());
+                            }
+                        }
+
+                        UpdateOperator::Unset => {
+                            search_doc.as_document_mut().unwrap().remove(part);
+                            return Ok(false);
+                        }
+
+                        UpdateOperator::Rename => {
+                            if let bson::Bson::String(new_name) = value {
+                                let original_bson: bson::Bson = search_doc.as_document().unwrap().get(part).unwrap().clone();
+                                search_doc.as_document_mut().unwrap().remove(part);
+                                search_doc.as_document_mut().unwrap().insert(new_name, original_bson);
+                            } else {
+                                return Err("incorrect data type for operator Rename".to_string());
                             }
                         }
 
@@ -331,10 +344,12 @@ impl Database {
         self.internal
             .create_scalar_function("json_patch", 2, rusqlite::functions::FunctionFlags::SQLITE_UTF8 | rusqlite::functions::FunctionFlags::SQLITE_DETERMINISTIC, move |ctx| {
                 let mut original_doc: bson::Bson = bson::Bson::Document(bson::Document::new());
-
-                if ctx.get_raw(0) == rusqlite::types::ValueRef::Null {
+                let mut is_insert = false;
+                if ctx.get_raw(0) != rusqlite::types::ValueRef::Null {
                     let original_blob = ctx.get_raw(0).as_blob().unwrap();
                     original_doc = bson::from_reader(original_blob).unwrap();
+                } else {
+                    is_insert = true;
                 }
 
                 let update_blob = ctx.get_raw(1).as_blob().unwrap();
@@ -342,34 +357,22 @@ impl Database {
                 let update_doc: bson::Document = bson::from_reader(update_blob).unwrap();
                 //https://docs.mongodb.com/manual/reference/operator/update/#std-label-update-operators
                 for (key, value) in update_doc.iter() {
-                   let operation:UpdateOperator =  match key.as_str() {
-                        "$currentDate" => {
-                            UpdateOperator::CurrentDate
-                        }
-                        "$inc" => {
-                            UpdateOperator::Inc
-                        }
-                        "$min" => {
-                            UpdateOperator::Min
-                        }
-                        "$max" => {
-                            UpdateOperator::Max
-                        }
-                        "$mul" => {
-                            UpdateOperator::Mul
-                        }
-                        "$rename" => {
-                            UpdateOperator::Rename
-                        }
-                        "$set" => {
-                            UpdateOperator::Set
-                        }
+                    let operation: UpdateOperator = match key.as_str() {
+                        "$currentDate" => UpdateOperator::CurrentDate,
+                        "$inc" => UpdateOperator::Inc,
+                        "$min" => UpdateOperator::Min,
+                        "$max" => UpdateOperator::Max,
+                        "$mul" => UpdateOperator::Mul,
+                        "$rename" => UpdateOperator::Rename,
+                        "$set" => UpdateOperator::Set,
                         "$setOnInsert" => {
-                            UpdateOperator::SetOnInsert
+                            if is_insert {
+                                UpdateOperator::Set
+                            } else {
+                                continue;
+                            }
                         }
-                        "$unset" => {
-                            UpdateOperator::Unset
-                        }
+                        "$unset" => UpdateOperator::Unset,
                         _ => {
                             return Err(rusqlite::Error::UserFunctionError(Box::new(UserFunctionError { message: "unknown update operator".to_string() })));
                         }
@@ -383,15 +386,12 @@ impl Database {
                             }
                         }
                     }
-
                 }
 
                 let bson_doc = bson::ser::to_document(&original_doc).unwrap();
                 let mut bytes: Vec<u8> = Vec::new();
                 bson_doc.to_writer(&mut bytes).unwrap();
                 return Ok(Some(rusqlite::types::Value::from(bytes)));
-
-                
             })
             .unwrap();
 
