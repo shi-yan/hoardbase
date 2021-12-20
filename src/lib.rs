@@ -35,33 +35,45 @@ pub mod query_translator;
 pub mod transaction;
 
 
-
-pub fn add(a: i32, b: i32) -> i32 {
-    a + b
-}
-
-// This is a really bad adding function, its purpose is to fail in this
-// example.
-#[allow(dead_code)]
-fn bad_add(a: i32, b: i32) -> i32 {
-    a - b
-}
-
 #[cfg(test)]
 mod tests {
     // Note this useful idiom: importing names from outer (for mod tests) scope.
     use super::*;
 
     #[test]
-    fn test_add() {
-        assert_eq!(add(1, 2), 3);
+    fn test_find() {
+
+        std::fs::remove_file("test_find.db").unwrap_or(());
+    
+        {
+            let mut config = database::DatabaseConfig::new("test_find.db");
+            config.trace(true);
+            config.profile(true);
+        
+            let mut db = database::Database::open(&config).unwrap();
+
+            let mut ccol: base::CollectionConfig = base::CollectionConfig::default("test_collect");
+            ccol.hash_document(true);
+            ccol.log_last_modified(true);
+            
+            let mut collection = db.create_collection("test_collect", &ccol).unwrap();
+            collection.create_index(&json!({"age": 1}), false).unwrap();
+
+            collection.insert_one(&json!({ "kind": "apples", "qty": 5 })).unwrap();
+            collection.insert_one(&json!({ "kind": "bananas", "qty": 7 })).unwrap();
+            collection.insert_one(&json!({ "kind": "oranges", "qty": { "in stock": 8, "ordered": 12 } })).unwrap();
+            collection.insert_one(&json!({ "kind": "avocados", "qty": "fourteen" })).unwrap();
+
+            let row = collection.find_one(&json!({ "kind": "apples" }), 0).unwrap();
+
+            assert_eq!(row.data.as_object().unwrap().get("kind").unwrap().as_str().unwrap(), "apples");
+            assert_eq!(row.data.as_object().unwrap().get("qty").unwrap().as_i64().unwrap(), 5);
+        }
+    
+        std::fs::remove_file("test_find.db").unwrap();
+
+
     }
 
-    #[test]
-    fn test_bad_add() {
-        // This assert would fire and test will fail.
-        // Please note, that private functions can be tested too!
-        assert_eq!(bad_add(1, 2), 3);
-    }
 }
 
