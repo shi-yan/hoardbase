@@ -22,7 +22,28 @@ hoardbase = "0.1.0-alpha"
 
 ## GUI Admin
 
-## Unsupported Mongodb Features
+## Build
+
+python binding, see [here](https://pyo3.rs) for more.
+```bash
+cd python
+python3 -m venv .env
+source .env/bin/activate
+pip3 install maturin
+maturin develop
+python3 test.py
+```
+
+cpp binding
+```bash
+cargo install cbindgen --force
+cd cpp
+mkdir build
+cd build
+cmake ..
+make
+./hoardbase_test
+```
 
 <!-- cargo-sync-readme start -->
 
@@ -34,11 +55,16 @@ very simple.
 
 Rust:
 ```rust
-let mut config = hoardbase::database::DatabaseConfig::new("test.db");
+use hoardbase::database::{DatabaseConfig, Database}
+use hoardbase::base::{CollectionConfig}
+
+...
+
+let mut config = DatabaseConfig::new("test.db");
 config.trace(true);
 config.profile(true);
-let mut db = hoardbase::database::Database::open(&config).unwrap();
-let mut ccol: hoardbase::base::CollectionConfig = hoardbase::base::CollectionConfig::default("test");
+let mut db = Database::open(&config).unwrap();
+let mut ccol: CollectionConfig = CollectionConfig::default("test");
 ccol.hash_document(true);
 ccol.log_last_modified(true);
 let mut collection = db.create_collection("test_collect", &ccol).unwrap();
@@ -53,6 +79,7 @@ db = hoardbase.Database.open('test.db')
 col = db.create_collection('test')
 r = col.insert_one({'name': 'test'})
 ```
+## Unsupported Mongodb Features
 
 ## Internals
 The key mechanism for storing and querying json data using sqlite is serializing json documents into the blob type. Currently [`bson`] is used 

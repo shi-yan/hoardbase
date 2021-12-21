@@ -19,3 +19,6 @@ crate-type = ["cdylib"]
 hoardbase = "0.1.0-alpha"
 serde_json = "1.0.72"
 libc = "0.2.112"
+
+[build-dependencies]
+cbindgen = "0.20.0"

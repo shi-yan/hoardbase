@@ -3,16 +3,16 @@ cmake_minimum_required(VERSION 3.16)
 
 project(Hoardbase)
 
-#include(FetchContent)
+include(FetchContent)
 
-#FetchContent_Declare(
-#    Corrosion
-#    GIT_REPOSITORY https://github.com/AndrewGaspar/corrosion.git
-#    GIT_TAG origin/master # Optionally specify a version tag or branch here
-#)
+FetchContent_Declare(
+    Corrosion
+    GIT_REPOSITORY https://github.com/AndrewGaspar/corrosion.git
+    GIT_TAG origin/master # Optionally specify a version tag or branch here
+)
 
-#FetchContent_MakeAvailable(Corrosion)
-find_package(Corrosion REQUIRED)
+FetchContent_MakeAvailable(Corrosion)
+#find_package(Corrosion REQUIRED)
 
 
 # Expose the crates as cmake target

@@ -6,11 +6,16 @@
 //! 
 //! Rust:
 //! ```rust
-//! let mut config = database::DatabaseConfig::new("test.db");
+//! use hoardbase::database::{DatabaseConfig, Database}
+//! use hoardbase::base::{CollectionConfig}
+//! 
+//! ...
+//! 
+//! let mut config = DatabaseConfig::new("test.db");
 //! config.trace(true);
 //! config.profile(true);
-//! let mut db = database::Database::open(&config).unwrap();
-//! let mut ccol: base::CollectionConfig = base::CollectionConfig::default("test");
+//! let mut db = Database::open(&config).unwrap();
+//! let mut ccol: CollectionConfig = CollectionConfig::default("test");
 //! ccol.hash_document(true);
 //! ccol.log_last_modified(true);
 //! let mut collection = db.create_collection("test_collect", &ccol).unwrap();
@@ -25,6 +30,7 @@
 //! col = db.create_collection('test')
 //! r = col.insert_one({'name': 'test'})
 //! ```
+//! ## Unsupported Mongodb Features
 //! 
 //! ## Internals
 //! The key mechanism for storing and querying json data using sqlite is serializing json documents into the blob type. Currently [`bson`] is used 
