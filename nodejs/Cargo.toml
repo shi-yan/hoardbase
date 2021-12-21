@@ -1,0 +1,20 @@
+[package]
+name = "hoardbase"
+version = "0.1.0"
+description = "A single-file embedded NoSql based on sqlite with mongodb like interface."
+authors = ["Shi Yan"]
+license = "MIT"
+edition = "2018"
+exclude = ["index.node"]
+
+[lib]
+crate-type = ["cdylib"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+
+[dependencies.neon]
+version = "0.9"
+default-features = false
+features = ["napi-6"]

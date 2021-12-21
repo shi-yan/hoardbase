@@ -1,0 +1,31 @@
+{
+  "name": "hoardbase",
+  "version": "0.1.0",
+  "description": "A single-file embedded NoSql based on sqlite with mongodb like interface.",
+  "main": "index.node",
+  "scripts": {
+    "build": "cargo-cp-artifact -nc index.node -- cargo build --message-format=json-render-diagnostics",
+    "build-debug": "npm run build --",
+    "build-release": "npm run build -- --release",
+    "install": "npm run build-release",
+    "test": "cargo test"
+  },
+  "author": "Shi Yan",
+  "license": "MIT",
+  "devDependencies": {
+    "cargo-cp-artifact": "^0.1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shi-yan/hoardbase.git"
+  },
+  "keywords": [
+    "sqlite",
+    "mongodb",
+    "NoSql"
+  ],
+  "bugs": {
+    "url": "https://github.com/shi-yan/hoardbase/issues"
+  },
+  "homepage": "https://github.com/shi-yan/hoardbase#readme"
+}
