@@ -1,0 +1,24 @@
+[package]
+name = "hoardbase_py"
+version = "0.1.0-alpha"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+description = "Hoardbase is a single-file embedded database based on sqlite with an API identical to that of mongodb."
+repository = "https://github.com/shi-yan/hoardbase"
+
+[lib]
+name = "hoardbase"
+# "cdylib" is necessary to produce a shared library for Python to import from.
+#
+# Downstream Rust code (including code in `bin/`, `examples/`, and `tests/`) will not be able
+# to `use string_sum;` unless the "rlib" or "lib" crate type is also included, e.g.:
+# crate-type = ["cdylib", "rlib"]
+crate-type = ["cdylib"]
+
+[dependencies.pyo3]
+version = "0.15.1"
+features = ["extension-module"]
+
+[dependencies]
+hoardbase = "0.1.0-alpha"
+serde_json = "1.0.72"
