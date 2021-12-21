@@ -26,12 +26,33 @@ hoardbase = "0.1.0-alpha"
 
 <!-- cargo-sync-readme start -->
 
-
-
 ## Usage
 Hoardbase tries to provide a similar programming interface as that of mongodb. If you are already familiar with mongodb, using Hoardbase should be 
 very simple.
 
+### Opening a database, Creating a collection, and inserting a record
+
+Rust:
+```rust
+let mut config = database::DatabaseConfig::new("test.db");
+config.trace(true);
+config.profile(true);
+let mut db = database::Database::open(&config).unwrap();
+let mut ccol: base::CollectionConfig = base::CollectionConfig::default("test");
+ccol.hash_document(true);
+ccol.log_last_modified(true);
+let mut collection = db.create_collection("test_collect", &ccol).unwrap();
+collection.create_index(&json!({"age": 1}), false).unwrap();
+collection.insert_one(&json!({ "kind": "apples", "qty": 5 })).unwrap();
+```
+
+Python:
+```python
+import hoardbase
+db = hoardbase.Database.open('test.db')
+col = db.create_collection('test')
+r = col.insert_one({'name': 'test'})
+```
 
 ## Internals
 The key mechanism for storing and querying json data using sqlite is serializing json documents into the blob type. Currently [`bson`] is used 
