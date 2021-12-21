@@ -34,11 +34,11 @@ very simple.
 
 Rust:
 ```rust
-let mut config = database::DatabaseConfig::new("test.db");
+let mut config = hoardbase::database::DatabaseConfig::new("test.db");
 config.trace(true);
 config.profile(true);
-let mut db = database::Database::open(&config).unwrap();
-let mut ccol: base::CollectionConfig = base::CollectionConfig::default("test");
+let mut db = hoardbase::database::Database::open(&config).unwrap();
+let mut ccol: hoardbase::base::CollectionConfig = hoardbase::base::CollectionConfig::default("test");
 ccol.hash_document(true);
 ccol.log_last_modified(true);
 let mut collection = db.create_collection("test_collect", &ccol).unwrap();

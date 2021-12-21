@@ -15,10 +15,7 @@ name = "hoardbase_cpp"
 # crate-type = ["cdylib", "rlib"]
 crate-type = ["cdylib"]
 
-[dependencies.pyo3]
-version = "0.15.1"
-features = ["extension-module"]
-
 [dependencies]
 hoardbase = "0.1.0-alpha"
 serde_json = "1.0.72"
+libc = "0.2.112"

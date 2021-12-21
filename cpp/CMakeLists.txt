@@ -34,9 +34,10 @@ file(GLOB generated_headers_dependencies
 add_custom_target(
   generated_headers_target
   COMMAND cbindgen --crate hoardbase_cpp --output
-        "${CMAKE_CURRENT_BINARY_DIR}/gen/"
+        "${CMAKE_CURRENT_BINARY_DIR}/gen/hoardbase.h"
   BYPRODUCTS ${generated_headers}
   DEPENDS ${generated_headers_dependencies}
+  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 add_dependencies(hoardbase generated_headers_target)
 
@@ -44,6 +45,16 @@ add_dependencies(hoardbase generated_headers_target)
 set_property(TARGET hoardbase PROPERTY
   PUBLIC_HEADER include/hoardbase.h ${generated_headers}
 )
+
+add_executable(hoardbase_test
+  ${CMAKE_CURRENT_SOURCE_DIR}/main.cpp
+)
+
+target_include_directories(hoardbase_test PRIVATE
+  ${CMAKE_CURRENT_BINARY_DIR}/gen
+)
+
+add_dependencies(hoardbase_test hoardbase)
 
 # export and install the SixtyFPS target so it can be used
 #export(TARGETS hoardbase hoardbase_cpp
