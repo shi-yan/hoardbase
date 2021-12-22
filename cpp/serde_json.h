@@ -39,6 +39,8 @@ public:
     bool from_json(const nlohmann::json &json);
 
     bool to_json(nlohmann::json &json);
+
+    bool debug_print_cpp();
 };
 
 class SerdeJsonVec : public SerdeJsonValue

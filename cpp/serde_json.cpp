@@ -162,14 +162,19 @@ bool SerdeJsonMap::from_json(const nlohmann::json &json)
 }
 
 bool SerdeJsonMap::to_json(nlohmann::json &json) {
-    auto iter = serde_json_map_iter(this->m_internal);
+    /*auto iter = serde_json_map_iter(this->m_internal);
 
     //for(int i = 0; i< count; ++i) {}
     auto item = serde_json_map_iter_next(iter);
     while(item) {
         serde_json_map_item_print(item);
         item = serde_json_map_iter_next(iter);
-    }
+    }*/
+}
+
+bool SerdeJsonMap::debug_print_cpp()
+{
+    call_cpp_test();
 }
 
 bool SerdeJsonVec::init()

@@ -73,7 +73,7 @@ pub unsafe extern "C" fn serde_json_map_field_count(ptr: *mut c_void) -> usize {
 
     return count;
 }
-
+/*
 #[no_mangle]
 pub unsafe extern "C" fn serde_json_map_key(ptr: *mut c_void, index: usize) -> CString {
     let handle_ptr = Box::<serde_json::Map<String, serde_json::Value>>::from_raw(ptr as *mut serde_json::Map<String, serde_json::Value>);
@@ -85,7 +85,7 @@ pub unsafe extern "C" fn serde_json_map_key(ptr: *mut c_void, index: usize) -> C
     let c_string = CString::new(&c_str[..]).unwrap() ;
     
     return c_string;
-}
+}*/
 
 #[no_mangle]
 pub unsafe extern "C" fn serde_json_map_iter_next(ptr: *mut c_void) -> *mut c_void {
@@ -252,4 +252,14 @@ pub unsafe extern "C" fn serde_json_vec_push(vec: *mut c_void, val: *mut c_void)
     (*vec_ptr).push(*value.clone());
     let vec = Box::<Vec<serde_json::Value>>::from_raw(vec_ptr);
     return Box::<Vec<serde_json::Value>>::into_raw(vec) as *mut c_void;
+}
+
+extern "C" {
+    pub fn test_print();
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn call_cpp_test() {
+    println!("call_cpp_test");
+    test_print();
 }

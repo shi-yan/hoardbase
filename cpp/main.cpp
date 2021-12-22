@@ -22,6 +22,8 @@ int main()
 
     map.from_json(j2);
 
+    map.debug_print_cpp();
+
     map.debug_print();
 
     nlohmann::json j3;
@@ -29,4 +31,6 @@ int main()
     map.to_json(j3);
 
     std::cout << j3.dump(4) << std::endl;
+
+
 }

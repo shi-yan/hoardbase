@@ -45,6 +45,17 @@ add_custom_target(
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+add_library(hoardbase_cpp_rust_helper STATIC
+  rust_helper.cpp
+)
+
+target_include_directories(hoardbase_cpp_rust_helper PRIVATE
+  ${json_SOURCE_DIR}/single_include
+)
+
+add_dependencies(hoardbase_cpp hoardbase_cpp_rust_helper)
+
+
 # Create a target which we will export
 add_library(hoardbase STATIC 
   ${CMAKE_CURRENT_SOURCE_DIR}/serde_json.cpp
@@ -55,7 +66,7 @@ target_include_directories(hoardbase PRIVATE
   ${json_SOURCE_DIR}/single_include
 )
 
-target_link_libraries(hoardbase INTERFACE hoardbase_cpp)
+target_link_libraries(hoardbase PRIVATE hoardbase_cpp_rust_helper hoardbase_cpp )
 
 add_dependencies(hoardbase generated_headers_target)
 
@@ -68,7 +79,7 @@ add_executable(hoardbase_test
   ${CMAKE_CURRENT_SOURCE_DIR}/main.cpp
 )
 
-target_link_libraries(hoardbase_test PRIVATE hoardbase)
+target_link_libraries(hoardbase_test PRIVATE hoardbase_cpp_rust_helper hoardbase)
 
 
 target_include_directories(hoardbase_test PRIVATE
