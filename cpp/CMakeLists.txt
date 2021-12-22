@@ -14,6 +14,14 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(Corrosion)
 #find_package(Corrosion REQUIRED)
 
+FetchContent_Declare(
+    json
+    GIT_REPOSITORY https://github.com/nlohmann/json.git
+    GIT_TAG origin/master # Optionally specify a version tag or branch here
+)
+
+FetchContent_MakeAvailable(json)
+
 
 # Expose the crates as cmake target
 corrosion_import_crate(
@@ -21,10 +29,7 @@ corrosion_import_crate(
   CRATES hoardbase_cpp
 )
 
-# Create a target which we will export
-add_library(hoardbase INTERFACE)
-target_link_libraries(hoardbase INTERFACE hoardbase_cpp)
-
+set(CMAKE_CXX_STANDARD 17) 
 # Generate headers with cbindgen
 set(generated_headers
   ${CMAKE_CURRENT_BINARY_DIR}/gen/hoardbase.h
@@ -39,6 +44,19 @@ add_custom_target(
   DEPENDS ${generated_headers_dependencies}
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 )
+
+# Create a target which we will export
+add_library(hoardbase STATIC 
+  ${CMAKE_CURRENT_SOURCE_DIR}/serde_json.cpp
+)
+
+target_include_directories(hoardbase PRIVATE
+  ${CMAKE_CURRENT_BINARY_DIR}/gen
+  ${json_SOURCE_DIR}/single_include
+)
+
+target_link_libraries(hoardbase INTERFACE hoardbase_cpp)
+
 add_dependencies(hoardbase generated_headers_target)
 
 # This will install the headers
@@ -50,11 +68,16 @@ add_executable(hoardbase_test
   ${CMAKE_CURRENT_SOURCE_DIR}/main.cpp
 )
 
+target_link_libraries(hoardbase_test PRIVATE hoardbase)
+
+
 target_include_directories(hoardbase_test PRIVATE
   ${CMAKE_CURRENT_BINARY_DIR}/gen
+  ${json_SOURCE_DIR}/single_include
 )
 
 add_dependencies(hoardbase_test hoardbase)
+
 
 # export and install the SixtyFPS target so it can be used
 #export(TARGETS hoardbase hoardbase_cpp

@@ -13,7 +13,6 @@ use std::rc::Weak;
 
 use crate::base::*;
 use crate::query_translator::QueryTranslator;
-use fallible_streaming_iterator::FallibleStreamingIterator;
 
 /// This function translate a json index descriptor into a SQL index descriptor
 fn translate_index_config(config: &serde_json::Value, scope: &str, fields: &mut Vec<(String, i8)>) -> std::result::Result<(), &'static str> {
