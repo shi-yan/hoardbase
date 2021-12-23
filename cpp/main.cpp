@@ -6,7 +6,7 @@
 int main()
 {
     void *db = open("test.db");
-    std::cout << "Hello, World!" << std::endl;
+    /*std::cout << "Hello, World!" << std::endl;
 
     SerdeJsonMap map;
     map.init();
@@ -31,6 +31,11 @@ int main()
     map.to_json(j3);
 
     std::cout << j3.dump(4) << std::endl;
+*/
+    create_collection(db, "test");
+
+
+   // close(db);
 
 
 }

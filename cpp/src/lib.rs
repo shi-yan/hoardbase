@@ -7,7 +7,7 @@ use serde_json::Value;
 use serde_json::Map;
 use std::borrow::Borrow;
 use serde_json::json;
-
+use hoardbase::base::CollectionTrait;
 //https://sixtyfps.io/blog/expose-rust-library-to-other-languages.html
 
 #[repr(C)]
@@ -42,13 +42,51 @@ pub unsafe extern "C" fn open(path: *const c_char) -> *mut c_void {
     let mut config = hoardbase::database::DatabaseConfig::new(str_slice);
     config.trace(true);
     config.profile(true);
-
-    let handle = Box::new(hoardbase::database::Database::open(&config).unwrap());
+    let mut db = hoardbase::database::Database::open(&config).unwrap();
+    let handle = Box::new(db);
     let handle_ptr = Box::<hoardbase::database::Database>::into_raw(handle);            
     println!("created handle");
 
     return handle_ptr as *mut c_void;
 }
+
+#[no_mangle]
+pub unsafe extern "C" fn close(handle: *mut c_void) {
+    let handle = Box::from_raw(handle as *mut hoardbase::database::Database);
+    println!("closed handle");
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn create_collection(handle: *mut c_void, name: *const c_char) -> *mut c_void {
+    let handle = handle as *mut hoardbase::database::Database;
+    println!("created collection1");
+    let c_str: &CStr = CStr::from_ptr(name);
+    let str_slice: &str = c_str.to_str().unwrap();
+    println!("created collection2 {}", str_slice);
+    let collection = (*handle).create_collection(str_slice, &hoardbase::base::CollectionConfig::default(str_slice)).unwrap();
+    println!("created collection");
+    let collection_ptr = Box::new(collection);
+    let collection_ptr = Box::<hoardbase::collection::Collection>::into_raw(collection_ptr);
+    return collection_ptr as *mut c_void;
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn collection_insert_one(handle: *mut c_void, val: *const c_void) -> *mut c_void {
+    let handle = handle as *mut hoardbase::collection::Collection;
+    let val = val as *mut serde_json::Value;
+    if let Ok(inserted) = (*handle).insert_one(&*val) {
+        
+        let inserted_ptr = Box::new(inserted.unwrap());
+        let inserted_ptr = Box::<hoardbase::base::Record>::into_raw(inserted_ptr);
+        return inserted_ptr as *mut c_void;
+    }
+    else {
+        return null_mut();
+    }
+    
+}
+
+
 
 #[no_mangle]
 pub unsafe extern "C" fn serde_json_map_new() -> *mut c_void {
