@@ -6,7 +6,7 @@ use std::os::raw::{c_int, c_void};
 use serde_json::Value;
 use serde_json::Map;
 use std::borrow::Borrow;
-
+use serde_json::json;
 
 //https://sixtyfps.io/blog/expose-rust-library-to-other-languages.html
 
@@ -255,11 +255,151 @@ pub unsafe extern "C" fn serde_json_vec_push(vec: *mut c_void, val: *mut c_void)
 }
 
 extern "C" {
-    pub fn test_print();
+    fn test_print();
+    fn create_json() -> *mut c_void;
+    fn free_json(ptr: *mut c_void);
+
+
+    fn print_json(ptr: *mut c_void);
+
+    fn insert_i64(ptr: *mut c_void, key: *const c_char, value: i64);
+
+
+    fn insert_f64(ptr: *mut c_void, key: *const c_char, value: f64);
+
+    fn insert_null(ptr: *mut c_void, key: *const c_char);
+
+    fn insert_bool(ptr: *mut c_void, key: *const c_char, value: bool);
+
+    fn insert_str(ptr: *mut c_void, key: *const c_char, value: *const c_char);
+
+    fn create_json_array() -> *mut c_void;
+
+    fn array_push_i64(ptr: *mut c_void, value: i64);
+
+    fn array_push_f64(ptr: *mut c_void, value: f64);
+
+    fn array_push_null(ptr: *mut c_void);
+
+    fn array_push_bool(ptr: *mut c_void, value: bool);
+
+    fn array_push_str(ptr: *mut c_void, value: *const c_char);
+
+    fn array_push_obj(ptr: *mut c_void, obj: *mut c_void);
+
+    fn insert_obj(ptr: *mut c_void, key: *const c_char, obj: *mut c_void);
+}
+
+
+unsafe fn serde_json2cpp_json(json: &serde_json::Value) -> *mut c_void {
+    let result = create_json();
+
+    for (key, value) in json.as_object().unwrap().iter() {
+        let key_c_str = CString::new(key.as_str()).unwrap();
+        let key_c_str_ptr: *const c_char = key_c_str.as_ptr() as *const c_char;
+
+        match value {
+            serde_json::Value::Null => {
+                insert_null(result, key_c_str_ptr);
+            },
+            serde_json::Value::Bool(val) => {
+                insert_bool(result, key_c_str_ptr, *val);
+            },
+            serde_json::Value::Number(val) => {
+                if let Some(i64val) = val.as_i64() {
+                    insert_i64(result, key_c_str_ptr, i64val);
+                } else if let Some(f64val) = val.as_f64() {
+                    insert_f64(result, key_c_str_ptr, f64val);
+                } else {
+                    panic!("unsupported number type");
+                }
+            },
+            serde_json::Value::String(val) => {
+                let val_c_str = CString::new(val.as_str()).unwrap();
+                let val_c_str_ptr: *const c_char = val_c_str.as_ptr() as *const c_char;
+                insert_str(result, key_c_str_ptr, val_c_str_ptr);
+            },
+            serde_json::Value::Array(val) => {
+                let vec_ptr = serde_json2cpp_array(val);
+
+                insert_obj(result, key_c_str_ptr, vec_ptr);
+
+                free_json(vec_ptr);
+            },
+            serde_json::Value::Object(val) => {
+                let map_ptr = serde_json2cpp_json(&value);
+                insert_obj(result, key_c_str_ptr, map_ptr);
+
+                free_json(map_ptr);
+            },
+        }
+    }
+
+    return result;
+}
+
+unsafe fn serde_json2cpp_array(arr: &Vec<serde_json::Value>) -> *mut c_void {
+    let result = create_json_array();
+
+    for value in arr.iter() {
+        match value {
+            serde_json::Value::Null => {
+                array_push_null(result);
+            },
+            serde_json::Value::Bool(val) => {
+                array_push_bool(result, *val);
+            },
+            serde_json::Value::Number(val) => {
+                if let Some(i64val) = val.as_i64() {
+                    array_push_i64(result, i64val);
+                } else if let Some(f64val) = val.as_f64() {
+                    array_push_f64(result, f64val);
+                } else {
+                    panic!("unsupported number type");
+                }
+            },
+            serde_json::Value::String(val) => {
+                let val_c_str = CString::new(val.as_str()).unwrap();
+                let val_c_str_ptr: *const c_char = val_c_str.as_ptr() as *const c_char;
+                array_push_str(result, val_c_str_ptr);
+            },
+            serde_json::Value::Array(val) => {
+                
+                let vec_ptr = serde_json2cpp_array(val);
+
+                array_push_obj(result, vec_ptr);
+
+                free_json(vec_ptr);
+            },
+            serde_json::Value::Object(val) => {
+                let map_ptr = serde_json2cpp_json(&value);
+                array_push_obj(result, map_ptr);
+                free_json(map_ptr);
+            },
+        }
+    }
+
+    return result;
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn call_cpp_test() {
     println!("call_cpp_test");
     test_print();
+
+
+    println!("call_cpp_test craft a json from rs");
+    let c_str = CString::new("test_field").unwrap();
+    let c_world: *const c_char = c_str.as_ptr() as *const c_char;
+
+    let json = json!({
+        "test_field": "test_value",
+        "test_field2": 2,
+    });
+
+    let json_ptr = serde_json2cpp_json(&json);
+
+    print_json(json_ptr);
+
+    free_json(json_ptr);
 }
