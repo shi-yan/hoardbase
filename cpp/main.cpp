@@ -5,7 +5,7 @@
 
 int main()
 {
-    void *db = open("test.db");
+    void *db = hoardbase_open("test.db");
     /*std::cout << "Hello, World!" << std::endl;
 
     SerdeJsonMap map;
@@ -32,7 +32,7 @@ int main()
 
     std::cout << j3.dump(4) << std::endl;
 */
-    create_collection(db, "test");
+    hoardbase_create_collection(db, "test");
 
 
    // close(db);

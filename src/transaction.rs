@@ -13,7 +13,7 @@ use std::rc::Rc;
 use std::rc::Weak;
 
 use crate::query_translator::QueryTranslator;
-use fallible_streaming_iterator::FallibleStreamingIterator;
+
 use crate::base::*;
 
 pub struct TransactionCollection<'conn> {

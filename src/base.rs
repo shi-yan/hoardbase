@@ -12,7 +12,6 @@ use std::rc::Rc;
 use std::rc::Weak;
 
 use crate::query_translator::QueryTranslator;
-use fallible_streaming_iterator::FallibleStreamingIterator;
 
 #[derive(Debug, Clone, Copy)]
 pub struct SearchOption {
@@ -61,8 +60,8 @@ impl CollectionConfig {
         CollectionConfig {
             name: name.to_string(),
             table_name: name.to_string(),
-            should_hash_document: false,
-            should_log_last_modified: false,
+            should_hash_document: true,
+            should_log_last_modified: true,
             should_hash_unique: false,
         }
     }

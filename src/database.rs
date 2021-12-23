@@ -307,7 +307,7 @@ fn recursive_process(search_doc: &mut bson::Bson, split: &mut std::str::Split<&s
 }
 
 impl Database {
-    pub fn open<'b>(config: &DatabaseConfig) -> std::result::Result<Database, &str> {
+    pub fn open(config: &DatabaseConfig) -> std::result::Result<Database, &str> {
         let mut connection = Database {
             config: config.clone(),
             internal: rusqlite::Connection::open(config.path.clone()).unwrap(),
@@ -466,9 +466,11 @@ impl Database {
                 return Ok(Some(rusqlite::types::Value::from(bytes)));
             })
             .unwrap();
-
+        println!("debug step 1 ================= ");
         let tx = self.internal.transaction().unwrap();
         {
+            println!("debug step 2 ================= ");
+
             tx.execute(
                 "CREATE TABLE IF NOT EXISTS _hoardbase (
                       id              INTEGER PRIMARY KEY,
@@ -483,9 +485,16 @@ impl Database {
                 [],
             )
             .unwrap();
+            println!("debug step 3 ================= ");
+
             tx.execute(&format!("CREATE UNIQUE INDEX IF NOT EXISTS collection ON _hoardbase(collection);"), []).unwrap();
         }
+        println!("debug step 4 ================= ");
+
         tx.commit().unwrap();
+
+        println!("debug step 5 ================= ");
+
 
         let mut stmt = self.internal.prepare("SELECT * FROM _hoardbase WHERE type=0").unwrap();
         let mut rows = stmt.query([]).unwrap();
@@ -526,8 +535,9 @@ impl Database {
                 table_name: collection_name.clone(),
             })
         } else {
+            println!("debug crash {}", collection_name);
             let tx = self.internal.transaction().unwrap();
-
+            println!("debug crash 1 {} {:?}", collection_name, config);
             {
                 tx.execute(
                     &format!(
@@ -544,6 +554,7 @@ impl Database {
                     [],
                 )
                 .unwrap();
+                println!("debug crash 2 {}", collection_name);
                 if config.should_hash_document {
                     tx.execute(&format!("CREATE {} INDEX IF NOT EXISTS _hash ON [{}](_hash);", if config.should_hash_unique { "UNIQUE" } else { "" }, collection_name), []).unwrap();
                 }

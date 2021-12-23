@@ -33,7 +33,7 @@ pub unsafe extern "C" fn sixtyfps_shared_vector_allocate(size: usize, align: usi
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn open(path: *const c_char) -> *mut c_void {
+pub unsafe extern "C" fn hoardbase_open(path: *const c_char) -> *mut c_void {
     let c_str: &CStr = CStr::from_ptr(path);
     let str_slice: &str = c_str.to_str().unwrap();
     let str_buf: String = str_slice.to_owned(); 
@@ -50,20 +50,24 @@ pub unsafe extern "C" fn open(path: *const c_char) -> *mut c_void {
     return handle_ptr as *mut c_void;
 }
 
+
+// I ran into a segmentation fault bug when naming this function close()
+// this naming poluted the std lib's close function.println
+// had to prefix it with hoardbase_ to avoid the collision.
 #[no_mangle]
-pub unsafe extern "C" fn close(handle: *mut c_void) {
+pub unsafe extern "C" fn hoardbase_close(handle: *mut c_void) {
     let handle = Box::from_raw(handle as *mut hoardbase::database::Database);
     println!("closed handle");
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn create_collection(handle: *mut c_void, name: *const c_char) -> *mut c_void {
+pub unsafe extern "C" fn hoardbase_create_collection(handle: *mut c_void, name: *const c_char) -> *mut c_void {
     let handle = handle as *mut hoardbase::database::Database;
     println!("created collection1");
     let c_str: &CStr = CStr::from_ptr(name);
     let str_slice: &str = c_str.to_str().unwrap();
     println!("created collection2 {}", str_slice);
-    let collection = (*handle).create_collection(str_slice, &hoardbase::base::CollectionConfig::default(str_slice)).unwrap();
+    let collection = (*handle).create_collection("test", &hoardbase::base::CollectionConfig::default("test")).unwrap();
     println!("created collection");
     let collection_ptr = Box::new(collection);
     let collection_ptr = Box::<hoardbase::collection::Collection>::into_raw(collection_ptr);

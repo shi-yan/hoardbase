@@ -16,7 +16,7 @@ name = "hoardbase_cpp"
 crate-type = ["staticlib"]
 
 [dependencies]
-hoardbase = "0.1.0-alpha"
+hoardbase = { path = "../" }
 serde_json = "1.0.72"
 libc = "0.2.112"
 
