@@ -1,6 +1,7 @@
 #include "rust_helper.h"
 #include <iostream>
 #include <nlohmann/json.hpp>
+#include "record.h"
 
 void test_print()
 {
@@ -113,4 +114,19 @@ void insert_obj(void *json_ptr, const char *key, void *obj)
 {
     nlohmann::json *j = reinterpret_cast<nlohmann::json *>(json_ptr);
     (*j)[key] = *reinterpret_cast<nlohmann::json *>(obj);
+}
+
+void* create_cpp_record(int64_t id, void *json_ptr, const char* hash, uint64_t last_modified) {
+
+    Record *r = new Record();
+
+    r->id = id;
+    r->data = *reinterpret_cast<nlohmann::json *>(json_ptr);
+   
+    r->hash = hash;
+    const auto p0 = std::chrono::time_point<std::chrono::system_clock>{};
+    r->last_modified = p0 + std::chrono::seconds(last_modified);
+
+    return reinterpret_cast<void *>(r);
+
 }

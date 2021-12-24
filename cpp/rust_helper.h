@@ -1,4 +1,7 @@
 #include <cstdint>
+#include <nlohmann/json.hpp>
+#include <string>
+#include <chrono>
 
 extern "C"
 {
@@ -35,5 +38,8 @@ extern "C"
     void array_push_obj(void *json_ptr, void *obj);
 
     void insert_obj(void *json_ptr, const char *key, void *obj);
+
+
+    void* create_cpp_record(int64_t id, void *json_ptr, const char* hash, uint64_t last_modified);
 
 }

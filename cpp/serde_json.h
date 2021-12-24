@@ -6,7 +6,7 @@ class SerdeJsonVec;
 class SerdeJsonValue
 {
     friend class SerdeJsonMap;
-protected:
+public:
     void *m_internal;
 
 public:

@@ -47,6 +47,7 @@ add_custom_target(
 
 add_library(hoardbase_cpp_rust_helper STATIC
   rust_helper.cpp
+  record.cpp
 )
 
 target_include_directories(hoardbase_cpp_rust_helper PRIVATE

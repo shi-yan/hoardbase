@@ -2,11 +2,12 @@
 #include <iostream>
 #include "serde_json.h"
 #include <nlohmann/json.hpp>
+#include "record.h"
 
 int main()
 {
     void *db = hoardbase_open("test.db");
-    /*std::cout << "Hello, World!" << std::endl;
+    std::cout << "Hello, World!" << std::endl;
 
     SerdeJsonMap map;
     map.init();
@@ -22,19 +23,28 @@ int main()
 
     map.from_json(j2);
 
-    map.debug_print_cpp();
+  //  map.debug_print_cpp();
 
-    map.debug_print();
+   // map.debug_print();
 
-    nlohmann::json j3;
+   // nlohmann::json j3;
 
-    map.to_json(j3);
+   // map.to_json(j3);
 
-    std::cout << j3.dump(4) << std::endl;
-*/
-    hoardbase_create_collection(db, "test");
+   // std::cout << j3.dump(4) << std::endl;
 
+    auto col = hoardbase_create_collection(db, "test");
 
+    auto val = serde_json_map2value(map.m_internal);
+    map.m_internal = nullptr;
+
+    auto record = reinterpret_cast<Record*>(hoardbase_collection_insert_one(col, val));
+
+    std::cout << "record id: " << record << std::endl;
+
+    record->debug_print();
+
+    delete record;
    // close(db);
 
 

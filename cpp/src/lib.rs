@@ -10,6 +10,47 @@ use serde_json::json;
 use hoardbase::base::CollectionTrait;
 //https://sixtyfps.io/blog/expose-rust-library-to-other-languages.html
 
+
+
+extern "C" {
+    fn test_print();
+    fn create_json() -> *mut c_void;
+    fn free_json(ptr: *mut c_void);
+
+
+    fn print_json(ptr: *mut c_void);
+
+    fn insert_i64(ptr: *mut c_void, key: *const c_char, value: i64);
+
+
+    fn insert_f64(ptr: *mut c_void, key: *const c_char, value: f64);
+
+    fn insert_null(ptr: *mut c_void, key: *const c_char);
+
+    fn insert_bool(ptr: *mut c_void, key: *const c_char, value: bool);
+
+    fn insert_str(ptr: *mut c_void, key: *const c_char, value: *const c_char);
+
+    fn create_json_array() -> *mut c_void;
+
+    fn array_push_i64(ptr: *mut c_void, value: i64);
+
+    fn array_push_f64(ptr: *mut c_void, value: f64);
+
+    fn array_push_null(ptr: *mut c_void);
+
+    fn array_push_bool(ptr: *mut c_void, value: bool);
+
+    fn array_push_str(ptr: *mut c_void, value: *const c_char);
+
+    fn array_push_obj(ptr: *mut c_void, obj: *mut c_void);
+
+    fn insert_obj(ptr: *mut c_void, key: *const c_char, obj: *mut c_void);
+
+    fn create_cpp_record(id: i64, json_ptr: *mut c_void, hash: *const c_char, last_modified: u64) -> *mut c_void;
+}
+
+
 #[repr(C)]
 pub enum JsonFieldType {
     String,
@@ -63,25 +104,30 @@ pub unsafe extern "C" fn hoardbase_close(handle: *mut c_void) {
 #[no_mangle]
 pub unsafe extern "C" fn hoardbase_create_collection(handle: *mut c_void, name: *const c_char) -> *mut c_void {
     let handle = handle as *mut hoardbase::database::Database;
-    println!("created collection1");
     let c_str: &CStr = CStr::from_ptr(name);
     let str_slice: &str = c_str.to_str().unwrap();
-    println!("created collection2 {}", str_slice);
     let collection = (*handle).create_collection("test", &hoardbase::base::CollectionConfig::default("test")).unwrap();
-    println!("created collection");
     let collection_ptr = Box::new(collection);
     let collection_ptr = Box::<hoardbase::collection::Collection>::into_raw(collection_ptr);
     return collection_ptr as *mut c_void;
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn collection_insert_one(handle: *mut c_void, val: *const c_void) -> *mut c_void {
+pub unsafe extern "C" fn hoardbase_collection_insert_one(handle: *mut c_void, val: *const c_void) -> *mut c_void {
     let handle = handle as *mut hoardbase::collection::Collection;
     let val = val as *mut serde_json::Value;
+    println!("debug val : {:?}", (*val));
     if let Ok(inserted) = (*handle).insert_one(&*val) {
-        
-        let inserted_ptr = Box::new(inserted.unwrap());
-        let inserted_ptr = Box::<hoardbase::base::Record>::into_raw(inserted_ptr);
+        println!("inserted {:?}", inserted);
+
+        let inserted = inserted.unwrap();
+
+        let json_ptr = serde_json2cpp_json(&inserted.data);
+        let hash_c_str = CString::new(inserted.hash.as_str()).unwrap();
+        let hash_c_str_ptr: *const c_char = hash_c_str.as_ptr() as *const c_char;
+        let inserted_ptr = create_cpp_record(inserted.id, json_ptr, hash_c_str_ptr, inserted.last_modified.timestamp() as u64);
+        free_json(json_ptr);
+
         return inserted_ptr as *mut c_void;
     }
     else {
@@ -294,42 +340,6 @@ pub unsafe extern "C" fn serde_json_vec_push(vec: *mut c_void, val: *mut c_void)
     (*vec_ptr).push(*value.clone());
     let vec = Box::<Vec<serde_json::Value>>::from_raw(vec_ptr);
     return Box::<Vec<serde_json::Value>>::into_raw(vec) as *mut c_void;
-}
-
-extern "C" {
-    fn test_print();
-    fn create_json() -> *mut c_void;
-    fn free_json(ptr: *mut c_void);
-
-
-    fn print_json(ptr: *mut c_void);
-
-    fn insert_i64(ptr: *mut c_void, key: *const c_char, value: i64);
-
-
-    fn insert_f64(ptr: *mut c_void, key: *const c_char, value: f64);
-
-    fn insert_null(ptr: *mut c_void, key: *const c_char);
-
-    fn insert_bool(ptr: *mut c_void, key: *const c_char, value: bool);
-
-    fn insert_str(ptr: *mut c_void, key: *const c_char, value: *const c_char);
-
-    fn create_json_array() -> *mut c_void;
-
-    fn array_push_i64(ptr: *mut c_void, value: i64);
-
-    fn array_push_f64(ptr: *mut c_void, value: f64);
-
-    fn array_push_null(ptr: *mut c_void);
-
-    fn array_push_bool(ptr: *mut c_void, value: bool);
-
-    fn array_push_str(ptr: *mut c_void, value: *const c_char);
-
-    fn array_push_obj(ptr: *mut c_void, obj: *mut c_void);
-
-    fn insert_obj(ptr: *mut c_void, key: *const c_char, obj: *mut c_void);
 }
 
 
