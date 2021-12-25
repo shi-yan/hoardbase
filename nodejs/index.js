@@ -1,6 +1,6 @@
 "use strict";
 
-const { databaseNew, databaseCreateCollection, databaseInsert, databaseGetById } = require("./index.node");
+const { databaseNew, databaseCreateCollection, collectionInsertOne, databaseGetById } = require("./index.node");
 
 class Database {
     constructor(path) {
@@ -9,7 +9,18 @@ class Database {
 
     createCollection(name) {
         let binded = databaseCreateCollection.bind(this.db);
-        binded(name);
+        return new Collection(binded(name));
+    }
+}
+
+class Collection {
+    constructor(collection) {
+        this.collection = collection;
+    }
+
+    insertOne(data) {
+        let binded = collectionInsertOne.bind(this.collection);
+        binded(data);
     }
 }
 

@@ -4,4 +4,6 @@ console.log(Database)
 
 let db = new Database("test.db")
 
-db.createCollection("test")
+let col = db.createCollection("test")
+
+col.insertOne({data: "test", age: 23})

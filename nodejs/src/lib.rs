@@ -2,6 +2,7 @@ use neon::prelude::*;
 use serde_json::Map;
 use std::cell::RefCell;
 use std::sync::{Arc, Mutex};
+use std::convert::TryInto;
 
 fn hello(mut cx: FunctionContext) -> JsResult<JsString> {
     Ok(cx.string("hello node"))
@@ -55,10 +56,33 @@ impl Database {
     }
 }
 
+impl Collection {
+    fn js_insert_one(mut cx: FunctionContext) -> JsResult<JsUndefined> {
+        let collection = cx.this().downcast_or_throw::<JsBox<Collection>, _>(&mut cx)?;
+        let obj = cx.argument::<JsObject>(0)?;
+        let properties = obj.get_own_property_names(&mut cx).unwrap();
+        let name_arr = properties.to_vec(&mut cx).unwrap();
+
+        for name in name_arr {
+            let name_str:String = name.to_string(&mut cx).unwrap().value(&mut cx);
+            let val = obj.get(&mut cx, name_str.as_str()).unwrap();
+            if val.is::<Handle<JsString>>() {
+                println!("It's a string!");
+            } else {
+                println!("Not a string...");
+            }
+            println!("field {}", name_str);
+        }
+
+        Ok(cx.undefined())
+    }
+}
+
 #[neon::main]
 fn main(mut cx: ModuleContext) -> NeonResult<()> {
   //  cx.export_function("hello", hello)?;
     cx.export_function("databaseNew", Database::js_new)?;
     cx.export_function("databaseCreateCollection", Database::js_create_collection)?;
+    cx.export_function("collectionInsertOne", Collection::js_insert_one)?;
     Ok(())
 }
