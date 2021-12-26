@@ -57,9 +57,9 @@ impl Collection {
     fn convert_js_obj2serde_json_map(cx: &mut FunctionContext, obj: &Handle<'_, JsObject>, output: &mut serde_json::Map<String, serde_json::Value>) {
         let properties = obj.get_own_property_names(cx).unwrap();
         let properties = properties.downcast_or_throw::<JsArray, _>(cx).unwrap();
-        let property_vals = properties.to_vec(cx).unwrap();
-        for name in property_vals {
-            let inner_name = name.downcast_or_throw::<JsString, _>(cx).unwrap();
+        
+        for idx in 0..properties.len(cx) {
+            let inner_name = properties.get( cx, idx).unwrap().downcast_or_throw::<JsString, _>(cx).unwrap();
             let name_str: String = inner_name.value(cx);
             println!("name: {}", name_str);
             let val = obj.get(cx, name_str.as_str()).unwrap();
@@ -91,8 +91,9 @@ impl Collection {
 
     fn convert_js_arr2serde_json_array(cx: &mut FunctionContext, arr: &Handle<'_, JsArray>, output: &mut Vec<serde_json::Value>) {
         let vals = arr.downcast_or_throw::<JsArray, _>(cx).unwrap();
-        let vals = vals.to_vec(cx).unwrap();
-        for val in vals {
+        
+        for index in 0..vals.len(cx) {
+            let val = vals.get(cx, index).unwrap();
             if val.is_a::<JsString, _>(cx) {
                 output.push(serde_json::Value::from(val.downcast_or_throw::<JsString, _>(cx).unwrap().value(cx)));
             } else if val.is_a::<JsNumber, _>(cx) {
@@ -118,7 +119,73 @@ impl Collection {
         }
     }
 
-    fn js_insert_one(mut cx: FunctionContext) -> JsResult<JsUndefined> {
+    fn serde_json2js_obj(cx: &mut FunctionContext, json: &serde_json::Map<String, serde_json::Value>, output: &mut Handle<JsObject>){
+        for (key, value) in json {
+            if value.is_null() {
+                let null_handle = cx.null();
+                output.set(cx, key.as_str(), null_handle ).unwrap();
+            }
+            else if value.is_i64() {
+                let val = cx.number(value.as_i64().unwrap() as f64);
+                output.set(cx, key.as_str(), val ).unwrap();
+            }
+            else if value.is_f64() {
+                let val = cx.number(value.as_f64().unwrap());
+                output.set(cx, key.as_str(), val ).unwrap();
+            }
+            else if value.is_string() {
+                let val = cx.string(value.as_str().unwrap());
+                output.set(cx, key.as_str(), val ).unwrap();
+
+            }
+            else if value.is_object() {
+                let mut obj_out: Handle<JsObject> = cx.empty_object();
+                Self::serde_json2js_obj(cx, value.as_object().unwrap(), &mut obj_out);
+                output.set(cx, key.as_str(), obj_out ).unwrap();
+            }
+            else if value.is_array() {
+                let arr = value.as_array().unwrap();
+                let mut arr_out = Handle::from(JsArray::new(cx, arr.len() as u32));
+                Self::serde_json_arr2js_arr(cx, arr, &mut arr_out);
+                output.set(cx, key.as_str(), arr_out).unwrap();
+            }
+        }
+    }
+
+    fn serde_json_arr2js_arr(cx: &mut FunctionContext, json: &Vec<serde_json::Value>, output: &mut JsArray) {
+        
+
+        for (i, val) in json.iter().enumerate()  {
+            if val.is_null() {
+                let val = cx.null();
+            }
+            else if val.is_i64() {
+                let val = cx.number(val.as_i64().unwrap() as f64);
+                output.set(cx, i as u32, val).unwrap();
+            }
+            else if val.is_string() {
+                let val = cx.string(val.as_str().unwrap());
+                output.set(cx, i as u32, val).unwrap();
+            }
+            else if val.is_f64() {
+                let val = cx.number(val.as_f64().unwrap());
+                output.set(cx, i as u32, val).unwrap();
+            }
+            else if val.is_object() {
+                let mut obj_out: Handle<JsObject> = cx.empty_object();
+                Self::serde_json2js_obj(cx, val.as_object().unwrap(), &mut obj_out);
+                output.set(cx, i as u32, obj_out).unwrap();
+            }
+            else if val.is_array() {
+                let arr = val.as_array().unwrap();
+                let mut arr_out = Handle::from(JsArray::new(cx, arr.len() as u32));
+                Self::serde_json_arr2js_arr(cx, arr, &mut arr_out);
+                output.set(cx, i as u32, arr_out).unwrap();
+            }
+        }
+    }
+
+    fn js_insert_one(mut cx: FunctionContext) -> JsResult<JsObject> {
         let collection = cx.this().downcast_or_throw::<JsBox<Collection>, _>(&mut cx)?;
         let obj = cx.argument::<JsObject>(0)?;
         let mut json = serde_json::Map::new();
@@ -127,8 +194,30 @@ impl Collection {
         println!("{:?}", json);
 
         let result = collection.db.lock().unwrap().collection(collection.name.as_str()).unwrap().insert_one( &serde_json::Value::from(json)).unwrap();
-        println!("{:?}", result);
-        Ok(cx.undefined())
+
+        let obj_out: Handle<JsObject> = cx.empty_object();
+
+        if let Some(record) = result {
+            let id = cx.number(record.id as f64);
+
+            obj_out.set(&mut cx, "_id", id).unwrap();
+            
+            let hash = cx.string(record.hash);
+
+            let mut data_out: Handle<JsObject> = cx.empty_object();
+            Self::serde_json2js_obj(&mut cx, record.data.as_object().unwrap(), &mut data_out);
+            obj_out.set(&mut cx, "data", data_out ).unwrap();
+
+
+            obj_out.set(&mut cx, "_hash", hash).unwrap();
+
+            let last_modified = cx.date(record.last_modified.timestamp() as f64 * 1000.0).unwrap();
+
+            obj_out.set(&mut cx, "_last_modified", last_modified).unwrap();
+        }
+
+    
+        Ok(obj_out)
     }
 }
 

@@ -20,7 +20,7 @@ class Collection {
 
     insertOne(data) {
         let binded = collectionInsertOne.bind(this.collection);
-        binded(data);
+        return binded(data);
     }
 }
 
