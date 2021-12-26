@@ -22,6 +22,13 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(json)
 
+FetchContent_Declare(
+    catch2
+    GIT_REPOSITORY https://github.com/catchorg/Catch2.git
+    GIT_TAG v2.13.7
+)
+
+FetchContent_MakeAvailable(catch2)
 
 # Expose the crates as cmake target
 corrosion_import_crate(
@@ -77,7 +84,7 @@ set_property(TARGET hoardbase PROPERTY
 )
 
 add_executable(hoardbase_test
-  ${CMAKE_CURRENT_SOURCE_DIR}/main.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/test.cpp
 )
 
 target_link_libraries(hoardbase_test PRIVATE hoardbase)
@@ -86,6 +93,7 @@ target_link_libraries(hoardbase_test PRIVATE hoardbase)
 target_include_directories(hoardbase_test PRIVATE
   ${CMAKE_CURRENT_BINARY_DIR}/gen
   ${json_SOURCE_DIR}/single_include
+  ${catch2_SOURCE_DIR}/single_include
 )
 
 add_dependencies(hoardbase_test hoardbase)
