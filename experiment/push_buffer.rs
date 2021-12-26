@@ -1,3 +1,0 @@
-struct push_buffer {
-    
-}

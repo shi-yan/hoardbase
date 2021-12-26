@@ -45,12 +45,20 @@ make
 ./hoardbase_test
 ```
 
-nodejs binding
+nodejs binding, see [here](https://neon-bindings.com/docs/hello-world) for more.
 ```bash
 cd nodejs
 npm i --save
 npm run build
 npm run test
+```
+
+hoardbase command parser (used for the GUI tool), see [here](https://tree-sitter.github.io/tree-sitter/creating-parsers) for more.
+```bash
+cd parser
+npm i --save
+./node_modules/.bin/tree-sitter generate
+./node_modules/.bin/tree-sitter parse example-file
 ```
 
 <!-- cargo-sync-readme start -->
