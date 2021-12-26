@@ -45,6 +45,14 @@ make
 ./hoardbase_test
 ```
 
+nodejs binding
+```bash
+cd nodejs
+npm i --save
+npm run build
+npm run test
+```
+
 <!-- cargo-sync-readme start -->
 
 ## Usage
