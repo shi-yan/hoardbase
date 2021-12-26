@@ -1,13 +1,25 @@
 import hoardbase
+import unittest
+import os
 
-db = hoardbase.Database.open('test.db')
 
-col = db.create_collection('test')
+class TestHoardbase(unittest.TestCase):
 
-r = col.insert_one({'name': 'test'})
+    def setUp(self):
+        self.path = 'test.db'
+        if os.path.exists(self.path):
+            os.remove(self.path)
+        self.db = hoardbase.Database.open('test.db')
 
-print(r.id, r.hash, r.last_modified)
+    def tearDown(self):
+        if os.path.exists(self.path):
+            os.remove(self.path)
 
-#r2 = db.collection('test').insert_one({'name': 'test2'})
+    def test_insert_one(self):
+        col = self.db.create_collection('test')
+        r = col.insert_one({'name': 'test'})
+        print(r.id, r.hash, r.last_modified)
+        self.assertEqual(r.id, 1)
 
-#print(r2.id, r2.hash, r2.last_modified)
+if __name__ == '__main__':
+    unittest.main()
