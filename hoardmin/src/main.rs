@@ -22,11 +22,7 @@ use std::cmp::Ordering;
 
 use clap::{App, Arg, SubCommand};
 
-mod collection;
-mod database;
-mod query_translator;
-mod base;
-mod transaction;
+use hoardbase::base::CollectionTrait;
 
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]

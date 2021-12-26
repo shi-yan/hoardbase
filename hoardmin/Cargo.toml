@@ -1,0 +1,19 @@
+[package]
+name = "hoardmin"
+version = "0.1.0-alpha"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+description = "Hoardbase is a single-file embedded database based on sqlite with an API identical to that of mongodb."
+repository = "https://github.com/shi-yan/hoardbase"
+
+[[bin]]
+name = "hoardmin"
+
+[dependencies]
+hoardbase = { path = "../" }
+serde_json = "1.0.72"
+quick-js = "0.4.1"
+clap = "2.34.0"
+cursive = "0.16.3"
+cursive_tree_view = "0.7"
+cursive_table_view = "0.13.3"

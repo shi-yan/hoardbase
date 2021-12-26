@@ -16,15 +16,7 @@ bson = { version = "2.0.1", features = ["chrono-0_4"] }
 slugify = "0.1.0"
 sha-1 = "0.10.0"
 hex = "0.4.3"
-cursive = "0.16.3"
-clap = "2.34.0"
-cursive_tree_view = "0.7"
-cursive_table_view = "0.13.3"
 chrono = "0.4.19"
-
-[[bin]]
-name = "hoardmin"
-path = "src/hoardmin.rs"
 
 [lib]
 path = "src/lib.rs"
