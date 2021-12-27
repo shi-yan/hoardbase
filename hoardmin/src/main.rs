@@ -13,7 +13,13 @@ use cursive::traits::*;
 use cursive::views::{Dialog, DummyView, LinearLayout, Panel, ResizedView, TextView};
 use cursive::Cursive;
 use cursive::align::HAlign;
-
+use cursive_tabs::TabPanel;
+use cursive::view::SizeConstraint;
+use cursive::views::NamedView;
+use cursive::views::EditView;
+use cursive::views::TextArea;
+use cursive::views::DebugView;
+use cursive::views::Button;
 // Modules --------------------------------------------------------------------
 use cursive_tree_view::{Placement, TreeView};
 use cursive_table_view::{TableView, TableViewItem};
@@ -172,36 +178,15 @@ fn main() {
         });
     });
 
-    // UI ---------------------------------------------------------------------
-    let mut v_split = LinearLayout::new(Orientation::Vertical);
-    v_split.add_child(
-        TextView::new(
-            r#"
--- Controls --
-Enter - Collapse children or submit row.
-b - Insert before row.
-a - Insert after row.
-p - Insert parent above row.
-f - Insert as first child of row.
-l - Insert as last child of row.
-e - Extract row without children.
-r - Remove row and children.
-h - Remove only children.
-c - Clear all items.
-"#,
-        )
-        .min_height(13),
-    );
-
-    v_split.add_child(ResizedView::with_full_height(DummyView));
-    v_split.add_child(TextView::new("Last action: None").with_name("status"));
-
     let mut h_split = LinearLayout::new(Orientation::Horizontal);
-    h_split.add_child(v_split);
-    h_split.add_child(ResizedView::with_fixed_size((4, 0), DummyView));
-    h_split.add_child(Panel::new(tree.with_name("tree").scrollable()));
+    let mut left_panel = ResizedView::with_full_height(Panel::new(tree.with_name("tree").scrollable()).title("Collection"));
+    left_panel.set_width(SizeConstraint::AtLeast(28));
+    h_split.add_child(left_panel);
 
-    siv.add_fullscreen_layer(h_split);
+
+
+
+
     let mut table = TableView::<Foo, BasicColumn>::new()
         .column(BasicColumn::Name, "Name", |c| c.width_percent(20))
         .column(BasicColumn::Count, "Count", |c| c.align(HAlign::Center))
@@ -250,9 +235,38 @@ c - Clear all items.
                 }),
         );
     });
-    siv.add_layer(Dialog::around(table.with_name("table").min_size((50, 20))).title("Table View"));
 
 
+    let mut toolbar = LinearLayout::new(Orientation::Horizontal);
+    toolbar.add_child(Button::new("Prev Page",|s| s.quit()));
+    toolbar.add_child(Button::new("Next Page",|s| s.quit()));
+    toolbar.add_child(ResizedView::with_full_width(DummyView{}));
+    toolbar.add_child(TextView::new("[Page 10]"));
+    toolbar.add_child(TextView::new("[Count 342]"));
+    
+
+  //  siv.add_layer(Dialog::around(table.with_name("table").min_size((50, 20))).title("Table View"));
+  let mut dh_split = LinearLayout::new(Orientation::Vertical);
+
+  dh_split.add_child(ResizedView::with_fixed_height(8, Panel::new(ResizedView::with_full_width(TextArea::new())).with_name("Command")));
+  dh_split.add_child(ResizedView::with_full_width(toolbar));
+  dh_split.add_child(ResizedView::with_full_height(Panel::new(table.with_name("table").min_size((50, 20)))));
+
+
+    let mut panel = TabPanel::new()
+    .with_tab(TextView::new("This is the first view!").with_name("First"))
+    .with_tab(NamedView::new("second", dh_split ));
+  
+
+    let mut right_panel = ResizedView::with_full_height(panel);
+    right_panel.set_width(SizeConstraint::Full);
+    h_split.add_child(right_panel);
+
+    let mut main_panel = LinearLayout::new(Orientation::Vertical);
+    main_panel.add_child(h_split);
+    main_panel.add_child(ResizedView::with_fixed_height(8, Panel::new(DebugView::new().scrollable()).title("Log")));
+
+    siv.add_fullscreen_layer(main_panel);
     fn set_status(siv: &mut Cursive, row: usize, text: &str) {
         let value = siv.call_on_name("tree", move |tree: &mut TreeView<String>| {
             tree.borrow_item(row)
@@ -268,6 +282,10 @@ c - Clear all items.
                 value.unwrap()
             ));
         });
+    }
+
+    fn edit_submitted(s: &mut Cursive, name: &str) {
+
     }
 
     siv.run();
