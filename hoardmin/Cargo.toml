@@ -8,6 +8,11 @@ repository = "https://github.com/shi-yan/hoardbase"
 
 [[bin]]
 name = "hoardmin"
+path = "./src/main.rs"
+
+[[bin]]
+name = "test"
+path = "./src/test.rs"
 
 [dependencies]
 hoardbase = { path = "../" }
