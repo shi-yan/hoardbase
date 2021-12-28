@@ -83,10 +83,10 @@ pub struct Database {
     config: DatabaseConfig,
     /// This is the underneath sqlite connection.
     internal: rusqlite::Connection,
-    /// This is a hash table of the existing collections in the database. This hash table only contains collections' name and configurations. When a user wants to 
+    /// This is a hash table of the existing collections in the database. This hash table only contains collections' name and configurations. When a user wants to
     /// access a collection, we will construct a collection object dynamically. A collection object is a wrapper of the underlying sqlite connection, as
     /// well as the collection's configurations.
-    /// 
+    ///
     /// The reason that we want to dynamically construct a collection object, instead of storing pre-constructed collection objects in this hash map, is
     /// that a collection object needs to reference to the underlying sqlite connection. Self reference [is not easy](https://arunanshub.hashnode.dev/self-referential-structs-in-rust) in Rust.
     collections: HashMap<String, (String, CollectionConfig)>,
@@ -272,15 +272,12 @@ fn recursive_process(search_doc: &mut bson::Bson, split: &mut std::str::Split<&s
                             if let bson::Bson::Int32(pos) = value {
                                 if *pos == 1 {
                                     search_doc.as_array_mut().unwrap().pop();
-                                }
-                                else if *pos == -1 {
+                                } else if *pos == -1 {
                                     search_doc.as_array_mut().unwrap().remove(0);
-                                }
-                                else {
+                                } else {
                                     return Err("incorrect position for operator Pop".to_string());
                                 }
-                            }
-                            else {
+                            } else {
                                 return Err("incorrect data type for operator Pop".to_string());
                             }
                         }
@@ -291,7 +288,7 @@ fn recursive_process(search_doc: &mut bson::Bson, split: &mut std::str::Split<&s
                             search_doc.as_array_mut().unwrap().push(original_data);
                         }
                         //https://docs.mongodb.com/manual/reference/operator/update-array/
-                        // todo: implement PushAll/pull $in, $each $position etc. 
+                        // todo: implement PushAll/pull $in, $each $position etc.
                         // todo: implement bitwise operators $bit
                         _ => {}
                     }
@@ -323,14 +320,14 @@ impl Database {
     }
 
     /// This is an internal function to initialize an empty database. The initialization steps include:
-    /// 
+    ///
     /// 1. Installing callbacks for tracing or profiling.
-    /// 
+    ///
     /// 2. Installing application-defined functions that are used for extracting bson field or patching bson document.
-    /// 
+    ///
     /// 3. Creating meta tables. There are two meta tables. One contains global info, such as database version. Another table
     /// contains the list of existing collections and their configurations.
-    /// 
+    ///
     /// 4. Fetching exisiting collections from the collection meta table and populate the collection hashmap.
     fn init<'b>(&'b mut self) {
         if self.config.should_trace {
@@ -501,10 +498,10 @@ impl Database {
 
             tx.execute(
                 "INSERT INTO _hoardbase_meta (version ,git_hash, format_version,
-            build_time) VALUES (?1, ?2, ?3, datetime('now') );", [
-                rusqlite::types::Value::from(env!("CARGO_PKG_VERSION").to_string()),
-                rusqlite::types::Value::from(env!("GIT_HASH").to_string()),
-                rusqlite::types::Value::from(0)]).unwrap();
+            build_time) VALUES (?1, ?2, ?3, datetime('now') );",
+                [rusqlite::types::Value::from(env!("CARGO_PKG_VERSION").to_string()), rusqlite::types::Value::from(env!("GIT_HASH").to_string()), rusqlite::types::Value::from(0)],
+            )
+            .unwrap();
         }
 
         tx.commit().unwrap();
@@ -548,9 +545,7 @@ impl Database {
                 table_name: collection_name.clone(),
             })
         } else {
-            println!("debug crash {}", collection_name);
             let tx = self.internal.transaction().unwrap();
-            println!("debug crash 1 {} {:?}", collection_name, config);
             {
                 tx.execute(
                     &format!(
@@ -567,7 +562,7 @@ impl Database {
                     [],
                 )
                 .unwrap();
-                println!("debug crash 2 {}", collection_name);
+
                 if config.should_hash_document {
                     tx.execute(&format!("CREATE {} INDEX IF NOT EXISTS _hash ON [{}](_hash);", if config.should_hash_unique { "UNIQUE" } else { "" }, collection_name), []).unwrap();
                 }
@@ -632,10 +627,56 @@ impl Database {
     }
 
     /// Drop a collection
-    pub fn drop_collection(&self) {}
+    pub fn drop_collection(&mut self, collection_name: &str) -> Result<(), &str> {
+        if self.collections.contains_key(collection_name) {
+            let tx = self.internal.transaction().unwrap();
+            {
+                tx.execute(&format!("DROP TABLE IF EXISTS [{}];", collection_name), []).unwrap();
+
+                tx.execute(
+                    &format!(
+                        "DELETE FROM [{}]
+                    WHERE collection = '{}';",
+                        collection_name, collection_name
+                    ),
+                    [],
+                )
+                .unwrap();
+            }
+            tx.commit().unwrap();
+
+            self.collections.remove(collection_name);
+            return Ok(());
+        }
+        Err("No collection found")
+    }
 
     /// Rename collection
-    pub fn rename_collection(&self) {}
+    pub fn rename_collection(&mut self, collection_old_name: &str, collection_new_name: &str) -> Result<(), &str> {
+        if self.collections.contains_key(collection_old_name) {
+            let tx = self.internal.transaction().unwrap();
+            {
+                tx.execute(&format!("ALTER TABLE [{}] RENAME TO [{}];", collection_old_name, collection_new_name), []).unwrap();
+
+                tx.execute(
+                    &format!(
+                        "UPDATE _hoardbase
+                    SET collection = '{}', table_name = '{}'
+                    WHERE collection = '{}';",
+                         collection_new_name, collection_new_name, collection_old_name
+                    ),
+                    [],
+                )
+                .unwrap();
+            }
+            tx.commit().unwrap();
+            let old_collection = self.collections.get(collection_old_name).unwrap().clone();
+            self.collections.remove(collection_old_name);
+            self.collections.insert(collection_new_name.to_string(), (collection_new_name.to_owned(), old_collection.1.to_owned()));
+            return Ok(());
+        }
+        Err("No collection found")
+    }
 
     /// Create a transaction
     pub fn transaction<'a, F>(&'a mut self, f: F) -> Result<(), &str>
