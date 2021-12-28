@@ -466,11 +466,9 @@ impl Database {
                 return Ok(Some(rusqlite::types::Value::from(bytes)));
             })
             .unwrap();
-        println!("debug step 1 ================= ");
+
         let tx = self.internal.transaction().unwrap();
         {
-            println!("debug step 2 ================= ");
-
             tx.execute(
                 "CREATE TABLE IF NOT EXISTS _hoardbase (
                       id              INTEGER PRIMARY KEY,
@@ -480,21 +478,36 @@ impl Database {
                       hash_document   BOOLEAN NOT NULL,
                       log_last_modified BOOLEAN NOT NULL,
                       encrypt          BOOLEAN NOT NULL,
-                      compress         BOOLEAN NOT NULL
+                      compress         BOOLEAN NOT NULL,
+                      serialization_method         TEXT NOT NULL
                       )",
                 [],
             )
             .unwrap();
-            println!("debug step 3 ================= ");
 
             tx.execute(&format!("CREATE UNIQUE INDEX IF NOT EXISTS collection ON _hoardbase(collection);"), []).unwrap();
+
+            tx.execute(
+                "CREATE TABLE IF NOT EXISTS _hoardbase_meta (
+                      id              INTEGER PRIMARY KEY,
+                      version      TEXT NOT NULL,
+                      git_hash             TEXT NOT NULL,
+                      format_version      INTEGER NOT NULL,
+                      build_time   DATETIME NOT NULL
+                      )",
+                [],
+            )
+            .unwrap();
+
+            tx.execute(
+                "INSERT INTO _hoardbase_meta (version ,git_hash, format_version,
+            build_time) VALUES (?1, ?2, ?3, datetime('now') );", [
+                rusqlite::types::Value::from(env!("CARGO_PKG_VERSION").to_string()),
+                rusqlite::types::Value::from(env!("GIT_HASH").to_string()),
+                rusqlite::types::Value::from(0)]).unwrap();
         }
-        println!("debug step 4 ================= ");
 
         tx.commit().unwrap();
-
-        println!("debug step 5 ================= ");
-
 
         let mut stmt = self.internal.prepare("SELECT * FROM _hoardbase WHERE type=0").unwrap();
         let mut rows = stmt.query([]).unwrap();
@@ -565,7 +578,8 @@ impl Database {
                     hash_document,
                     log_last_modified,
                     encrypt,
-                    compress) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) ON CONFLICT(collection) DO NOTHING",
+                    compress,
+                    serialization_method) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'bson') ON CONFLICT(collection) DO NOTHING",
                     )
                     .unwrap();
                 stmt.execute([

@@ -6,21 +6,23 @@
 //! 
 //! Rust:
 //! ```rust
-//! use hoardbase::database::{DatabaseConfig, Database}
-//! use hoardbase::base::{CollectionConfig}
+//! use hoardbase::database::{DatabaseConfig, Database};
+//! use hoardbase::base::{CollectionConfig};
+//! use crate::hoardbase::base::CollectionTrait;
+//! use serde_json::json;
 //! 
-//! ...
-//! 
-//! let mut config = DatabaseConfig::new("test.db");
-//! config.trace(true);
-//! config.profile(true);
-//! let mut db = Database::open(&config).unwrap();
-//! let mut ccol: CollectionConfig = CollectionConfig::default("test");
-//! ccol.hash_document(true);
-//! ccol.log_last_modified(true);
-//! let mut collection = db.create_collection("test_collect", &ccol).unwrap();
-//! collection.create_index(&json!({"age": 1}), false).unwrap();
-//! collection.insert_one(&json!({ "kind": "apples", "qty": 5 })).unwrap();
+//! fn main() {
+//!     let mut config = DatabaseConfig::new("test.db");
+//!     config.trace(true);
+//!     config.profile(true);
+//!     let mut db = Database::open(&config).unwrap();
+//!     let mut ccol: CollectionConfig = CollectionConfig::default("test");
+//!     ccol.hash_document(true);
+//!     ccol.log_last_modified(true);
+//!     let mut collection = db.create_collection("test_collect", &ccol).unwrap();
+//!     collection.create_index(&json!({"age": 1}), false).unwrap();
+//!     collection.insert_one(&json!({ "kind": "apples", "qty": 5 })).unwrap();
+//! }
 //! ```
 //! 
 //! Python:
@@ -75,6 +77,7 @@ mod tests {
         std::fs::remove_file("test_find.db").unwrap_or(());
     
         {
+            println!("{:?}", env!("CARGO_PKG_VERSION"));
             let mut config = database::DatabaseConfig::new("test_find.db");
             config.trace(true);
             config.profile(true);
