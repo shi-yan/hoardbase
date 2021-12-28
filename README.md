@@ -45,12 +45,20 @@ make
 ./hoardbase_test
 ```
 
-nodejs binding
+nodejs binding, see [here](https://neon-bindings.com/docs/hello-world) for more.
 ```bash
 cd nodejs
 npm i --save
 npm run build
 npm run test
+```
+
+hoardbase command parser (used for the GUI tool), see [here](https://tree-sitter.github.io/tree-sitter/creating-parsers) for more.
+```bash
+cd parser
+npm i --save
+./node_modules/.bin/tree-sitter generate
+./node_modules/.bin/tree-sitter parse example-file
 ```
 
 <!-- cargo-sync-readme start -->
@@ -63,21 +71,23 @@ very simple.
 
 Rust:
 ```rust
-use hoardbase::database::{DatabaseConfig, Database}
-use hoardbase::base::{CollectionConfig}
+use hoardbase::database::{DatabaseConfig, Database};
+use hoardbase::base::{CollectionConfig};
+use crate::hoardbase::base::CollectionTrait;
+use serde_json::json;
 
-...
-
-let mut config = DatabaseConfig::new("test.db");
-config.trace(true);
-config.profile(true);
-let mut db = Database::open(&config).unwrap();
-let mut ccol: CollectionConfig = CollectionConfig::default("test");
-ccol.hash_document(true);
-ccol.log_last_modified(true);
-let mut collection = db.create_collection("test_collect", &ccol).unwrap();
-collection.create_index(&json!({"age": 1}), false).unwrap();
-collection.insert_one(&json!({ "kind": "apples", "qty": 5 })).unwrap();
+fn main() {
+    let mut config = DatabaseConfig::new("test.db");
+    config.trace(true);
+    config.profile(true);
+    let mut db = Database::open(&config).unwrap();
+    let mut ccol: CollectionConfig = CollectionConfig::default("test");
+    ccol.hash_document(true);
+    ccol.log_last_modified(true);
+    let mut collection = db.create_collection("test_collect", &ccol).unwrap();
+    collection.create_index(&json!({"age": 1}), false).unwrap();
+    collection.insert_one(&json!({ "kind": "apples", "qty": 5 })).unwrap();
+}
 ```
 
 Python:

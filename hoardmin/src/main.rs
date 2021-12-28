@@ -1,33 +1,30 @@
-extern crate cursive_tree_view;
 extern crate cursive_table_view;
+extern crate cursive_tree_view;
 
-
-   
 // Crate Dependencies ---------------------------------------------------------
 use cursive;
 
-
 // External Dependencies ------------------------------------------------------
+use cursive::align::HAlign;
 use cursive::direction::Orientation;
 use cursive::traits::*;
+use cursive::view::SizeConstraint;
+use cursive::views::Button;
+use cursive::views::DebugView;
+use cursive::views::EditView;
+use cursive::views::NamedView;
+use cursive::views::TextArea;
 use cursive::views::{Dialog, DummyView, LinearLayout, Panel, ResizedView, TextView};
 use cursive::Cursive;
-use cursive::align::HAlign;
-
+use cursive_tabs::TabPanel;
 // Modules --------------------------------------------------------------------
-use cursive_tree_view::{Placement, TreeView};
 use cursive_table_view::{TableView, TableViewItem};
+use cursive_tree_view::{Placement, TreeView};
 use std::cmp::Ordering;
-
 
 use clap::{App, Arg, SubCommand};
 
-mod collection;
-mod database;
-mod query_translator;
-mod base;
-mod transaction;
-
+use hoardbase::base::CollectionTrait;
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
 enum BasicColumn {
@@ -74,11 +71,12 @@ impl TableViewItem<BasicColumn> for Foo {
     }
 }
 
-
 fn main() {
     let matches = App::new("Hoardmin").version("1.0").author("Shi Yan.").about("a database").arg(Arg::with_name("file").required(true).takes_value(true)).get_matches();
 
     println!("{:?}", matches.args.get("file").unwrap().vals[0]);
+    println!("{:?}", env!("CARGO_PKG_VERSION"));
+    println!("{:?}", env!("GIT_HASH"));
 
     let mut siv = cursive::default();
 
@@ -103,17 +101,11 @@ fn main() {
 
     // Callbacks --------------------------------------------------------------
     tree.set_on_submit(|siv: &mut Cursive, row| {
-        let value = siv.call_on_name("tree", move |tree: &mut TreeView<String>| {
-            tree.borrow_item(row).unwrap().to_string()
-        });
+        let value = siv.call_on_name("tree", move |tree: &mut TreeView<String>| tree.borrow_item(row).unwrap().to_string());
 
-        siv.add_layer(
-            Dialog::around(TextView::new(value.unwrap()))
-                .title("Item submitted")
-                .button("Close", |s| {
-                    s.pop_layer();
-                }),
-        );
+        siv.add_layer(Dialog::around(TextView::new(value.unwrap())).title("Item submitted").button("Close", |s| {
+            s.pop_layer();
+        }));
 
         set_status(siv, row, "Submitted");
     });
@@ -134,8 +126,7 @@ fn main() {
     fn insert_row(s: &mut Cursive, text: &str, placement: Placement) {
         let row = s.call_on_name("tree", move |tree: &mut TreeView<String>| {
             let row = tree.row().unwrap_or(0);
-            tree.insert_item(text.to_string(), placement, row)
-                .unwrap_or(0)
+            tree.insert_item(text.to_string(), placement, row).unwrap_or(0)
         });
         set_status(s, row.unwrap(), "Row inserted");
     }
@@ -176,103 +167,73 @@ fn main() {
         });
     });
 
-    // UI ---------------------------------------------------------------------
-    let mut v_split = LinearLayout::new(Orientation::Vertical);
-    v_split.add_child(
-        TextView::new(
-            r#"
--- Controls --
-Enter - Collapse children or submit row.
-b - Insert before row.
-a - Insert after row.
-p - Insert parent above row.
-f - Insert as first child of row.
-l - Insert as last child of row.
-e - Extract row without children.
-r - Remove row and children.
-h - Remove only children.
-c - Clear all items.
-"#,
-        )
-        .min_height(13),
-    );
-
-    v_split.add_child(ResizedView::with_full_height(DummyView));
-    v_split.add_child(TextView::new("Last action: None").with_name("status"));
-
     let mut h_split = LinearLayout::new(Orientation::Horizontal);
-    h_split.add_child(v_split);
-    h_split.add_child(ResizedView::with_fixed_size((4, 0), DummyView));
-    h_split.add_child(Panel::new(tree.with_name("tree").scrollable()));
+    let mut left_panel = ResizedView::with_full_height(Panel::new(tree.with_name("tree").scrollable()).title("Collection"));
+    left_panel.set_width(SizeConstraint::AtLeast(28));
+    h_split.add_child(left_panel);
 
-    siv.add_fullscreen_layer(h_split);
     let mut table = TableView::<Foo, BasicColumn>::new()
         .column(BasicColumn::Name, "Name", |c| c.width_percent(20))
         .column(BasicColumn::Count, "Count", |c| c.align(HAlign::Center))
-        .column(BasicColumn::Rate, "Rate", |c| {
-            c.ordering(Ordering::Greater)
-                .align(HAlign::Right)
-                .width_percent(20)
-        });
-    
+        .column(BasicColumn::Rate, "Rate", |c| c.ordering(Ordering::Greater).align(HAlign::Right).width_percent(20));
     let mut items = Vec::new();
     for i in 0..50 {
-        items.push(Foo {
-            name: format!("Name {}", i),
-            count: 23,
-            rate: 2,
-        });
+        items.push(Foo { name: format!("Name {}", i), count: 23, rate: 2 });
     }
 
     table.set_items(items);
 
     table.set_on_sort(|siv: &mut Cursive, column: BasicColumn, order: Ordering| {
-        siv.add_layer(
-            Dialog::around(TextView::new(format!("{} / {:?}", column.as_str(), order)))
-                .title("Sorted by")
-                .button("Close", |s| {
-                    s.pop_layer();
-                }),
-        );
+        siv.add_layer(Dialog::around(TextView::new(format!("{} / {:?}", column.as_str(), order))).title("Sorted by").button("Close", |s| {
+            s.pop_layer();
+        }));
     });
 
     table.set_on_submit(|siv: &mut Cursive, row: usize, index: usize| {
-        let value = siv
-            .call_on_name("table", move |table: &mut TableView<Foo, BasicColumn>| {
-                format!("{:?}", table.borrow_item(index).unwrap())
-            })
-            .unwrap();
+        let value = siv.call_on_name("table", move |table: &mut TableView<Foo, BasicColumn>| format!("{:?}", table.borrow_item(index).unwrap())).unwrap();
 
-        siv.add_layer(
-            Dialog::around(TextView::new(value))
-                .title(format!("Removing row # {}", row))
-                .button("Close", move |s| {
-                    s.call_on_name("table", |table: &mut TableView<Foo, BasicColumn>| {
-                        table.remove_item(index);
-                    });
-                    s.pop_layer();
-                }),
-        );
+        siv.add_layer(Dialog::around(TextView::new(value)).title(format!("Removing row # {}", row)).button("Close", move |s| {
+            s.call_on_name("table", |table: &mut TableView<Foo, BasicColumn>| {
+                table.remove_item(index);
+            });
+            s.pop_layer();
+        }));
     });
-    siv.add_layer(Dialog::around(table.with_name("table").min_size((50, 20))).title("Table View"));
 
+    let mut toolbar = LinearLayout::new(Orientation::Horizontal);
+    toolbar.add_child(Button::new("Prev Page", |s| s.quit()));
+    toolbar.add_child(Button::new("Next Page", |s| s.quit()));
+    toolbar.add_child(ResizedView::with_full_width(DummyView {}));
+    toolbar.add_child(TextView::new("[Page 10]"));
+    toolbar.add_child(TextView::new("[Count 342]"));
 
+    //  siv.add_layer(Dialog::around(table.with_name("table").min_size((50, 20))).title("Table View"));
+    let mut dh_split = LinearLayout::new(Orientation::Vertical);
+
+    dh_split.add_child(ResizedView::with_fixed_height(8, Panel::new(ResizedView::with_full_width(TextArea::new())).with_name("Command")));
+    dh_split.add_child(ResizedView::with_full_width(toolbar));
+    dh_split.add_child(ResizedView::with_full_height(Panel::new(table.with_name("table").min_size((50, 20)))));
+
+    let mut panel = TabPanel::new().with_tab(TextView::new("This is the first view!").with_name("First")).with_tab(NamedView::new("second", dh_split));
+
+    let mut right_panel = ResizedView::with_full_height(panel);
+    right_panel.set_width(SizeConstraint::Full);
+    h_split.add_child(right_panel);
+
+    let mut main_panel = LinearLayout::new(Orientation::Vertical);
+    main_panel.add_child(h_split);
+    main_panel.add_child(ResizedView::with_fixed_height(8, Panel::new(DebugView::new().scrollable()).title("Log")));
+
+    siv.add_fullscreen_layer(main_panel);
     fn set_status(siv: &mut Cursive, row: usize, text: &str) {
-        let value = siv.call_on_name("tree", move |tree: &mut TreeView<String>| {
-            tree.borrow_item(row)
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| "".to_string())
-        });
+        let value = siv.call_on_name("tree", move |tree: &mut TreeView<String>| tree.borrow_item(row).map(|s| s.to_string()).unwrap_or_else(|| "".to_string()));
 
         siv.call_on_name("status", move |view: &mut TextView| {
-            view.set_content(format!(
-                "Last action: {} row #{} \"{}\"",
-                text,
-                row,
-                value.unwrap()
-            ));
+            view.set_content(format!("Last action: {} row #{} \"{}\"", text, row, value.unwrap()));
         });
     }
+
+    fn edit_submitted(s: &mut Cursive, name: &str) {}
 
     siv.run();
 }
