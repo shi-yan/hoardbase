@@ -53,12 +53,10 @@ npm run build
 npm run test
 ```
 
-hoardbase command parser (used for the GUI tool), see [here](https://tree-sitter.github.io/tree-sitter/creating-parsers) for more.
+hoardmin, the TUI admin tool.
 ```bash
-cd parser
-npm i --save
-./node_modules/.bin/tree-sitter generate
-./node_modules/.bin/tree-sitter parse example-file
+cd hoardmin
+Cargo run --bin hoardmin
 ```
 
 <!-- cargo-sync-readme start -->
@@ -97,6 +95,15 @@ db = hoardbase.Database.open('test.db')
 col = db.create_collection('test')
 r = col.insert_one({'name': 'test'})
 ```
+
+Nodejs:
+```javascript
+const Database = require('hoardbase')
+let db = new Database(path)
+let col = db.createCollection("test")
+let r = col.insertOne({ data: "test", age: 23, test_arr: [1, 2, 3], test_obj: { a: 1, b: 2 } })
+```
+
 ## Unsupported Mongodb Features
 
 ## Internals

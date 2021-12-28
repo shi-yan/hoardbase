@@ -32,6 +32,15 @@
 //! col = db.create_collection('test')
 //! r = col.insert_one({'name': 'test'})
 //! ```
+//! 
+//! Nodejs:
+//! ```javascript
+//! const Database = require('hoardbase')
+//! let db = new Database(path)
+//! let col = db.createCollection("test")
+//! let r = col.insertOne({ data: "test", age: 23, test_arr: [1, 2, 3], test_obj: { a: 1, b: 2 } })
+//! ```
+//! 
 //! ## Unsupported Mongodb Features
 //! 
 //! ## Internals
