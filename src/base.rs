@@ -82,7 +82,20 @@ impl CollectionConfig {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct Index {
+    pub seq: i64,
+    pub name: String,
+    pub is_unique: bool,
+    pub index_type : String,
+    pub is_partial: bool,
+}
 
+impl std::fmt::Display for Index {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Index {{ seq: {}, name: {}, is_unique: {}, index_type: {} is_partial: {} }}", self.seq, self.name, self.is_unique, self.index_type, self.is_partial)
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct Record {
@@ -98,38 +111,35 @@ impl std::fmt::Display for Record {
     }
 }
 
-
 pub trait CollectionTrait {
-    fn find(&mut self, query: &serde_json::Value, options: &Option<SearchOption>, f: &mut dyn FnMut(&Record) -> std::result::Result<(), &'static str>) -> std::result::Result<(), &str>;
+    fn find(&mut self, query: &bson::Document, options: &Option<SearchOption>, f: &mut dyn FnMut(&Record) -> std::result::Result<(), &'static str>) -> std::result::Result<(), &str>;
     fn get_name(&self) -> &str;
     fn get_table_name(&self) -> &str;
 
-    fn count_document(&mut self, query: &serde_json::Value, options: &Option<SearchOption>) -> std::result::Result<i64, &str>;
+    fn count_document(&mut self, query: &bson::Document, options: &Option<SearchOption>) -> std::result::Result<i64, &str>;
     fn create_index(&mut self, config: &bson::Document, is_unique: bool) -> std::result::Result<(), String>;
 
-    fn delete_one(&mut self, query: &serde_json::Value) -> std::result::Result<usize, String>;
+    fn delete_one(&mut self, query: &bson::Document) -> std::result::Result<usize, String>;
     fn changes(&mut self) -> std::result::Result<i64, String>;
-    fn delete_many(&mut self, query: &serde_json::Value) -> std::result::Result<usize, String>;
-    fn distinct(&mut self, field: &str, query: &Option<&serde_json::Value>, options: &Option<SearchOption>) -> std::result::Result<i64, &str>;
+    fn delete_many(&mut self, query: &bson::Document) -> std::result::Result<usize, String>;
+    fn distinct(&mut self, field: &str, query: &Option<bson::Document>, options: &Option<SearchOption>) -> std::result::Result<i64, &str>;
 
     fn drop_index(&mut self, index_name: &str) -> std::result::Result<(), String>;
 
-    fn find_one(&mut self, query: &serde_json::Value, skip: i64) -> std::result::Result<Record, &str>;
-    fn find_one_and_delete(&mut self, query: &serde_json::Value) -> std::result::Result<Option<Record>, String>;
-   // fn find_one_and_replace(&mut self, query: &serde_json::Value, replacement: &serde_json::Value, skip: i64) -> std::result::Result<Record, String> ;
-   // fn find_one_and_update(&mut self);
-   // fn find_and_modify(&mut self);
-    fn get_indexes(&mut self) -> Result<Vec<serde_json::Value>, String>;
+    fn find_one(&mut self, query: &bson::Document, skip: i64) -> std::result::Result<Record, &str>;
+    fn find_one_and_delete(&mut self, query: &bson::Document) -> std::result::Result<Option<Record>, String>;
 
-    fn insert_one(&mut self, document: &serde_json::Value) -> std::result::Result<Option<Record>, String> ;
+    fn get_indexes(&mut self) ->  Result<Vec<Index>, String>;
 
-    fn insert_many(&mut self, documents: &Vec<serde_json::Value>) -> std::result::Result<(), String> ;
+    fn insert_one(&mut self, document: &bson::Document) -> std::result::Result<Option<Record>, String> ;
+
+    fn insert_many(&mut self, documents: &Vec<bson::Document>) -> std::result::Result<(), String> ;
 
     fn reindex(&mut self) -> std::result::Result<(), String> ;
-    fn replace_one(&mut self, query: &serde_json::Value, replacement: &serde_json::Value, skip: i64) -> std::result::Result<Option<Record>, String>;
+    fn replace_one(&mut self, query: &bson::Document, replacement: &bson::Document, skip: i64) -> std::result::Result<Option<Record>, String>;
 
-    fn update_one(&mut self, query: &serde_json::Value, update: &serde_json::Value, skip: i64, upsert: bool) -> std::result::Result<Option<Record>, String> ;
-    fn update_many(&mut self, query: &serde_json::Value, update: &serde_json::Value, limit: i64, skip: i64, upsert: bool) -> Result<i64, String>;
+    fn update_one(&mut self, query: &bson::Document, update: &bson::Document, skip: i64, upsert: bool) -> std::result::Result<Option<Record>, String> ;
+    fn update_many(&mut self, query: &bson::Document, update: &bson::Document, limit: i64, skip: i64, upsert: bool) -> Result<i64, String>;
 }
 
 pub trait Adapter<A> {
@@ -143,10 +153,10 @@ impl Adapter<rusqlite::Connection> for rusqlite::Connection {
 }
 
 #[inline]
-pub fn find_internal<A, C: Adapter<A>, const H:bool, const L:bool>(conn: &C, config: &CollectionConfig, query: &serde_json::Value, options: &Option<SearchOption>, f: &mut dyn FnMut(&Record) -> std::result::Result<(), &'static str>) -> std::result::Result<(), &'static str>
+pub fn find_internal<A, C: Adapter<A>, const H:bool, const L:bool>(conn: &C, config: &CollectionConfig, query: &bson::Document, options: &Option<SearchOption>, f: &mut dyn FnMut(&Record) -> std::result::Result<(), &'static str>) -> std::result::Result<(), &'static str>
 {
     let mut params = Vec::<rusqlite::types::Value>::new();
-    let where_str: String = QueryTranslator {}.query_document(&query, &mut params).unwrap();
+    let where_str: String = QueryTranslator {}.query_document(query, &mut params).unwrap();
 
     let mut option_str = String::new();
 

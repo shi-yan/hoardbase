@@ -86,49 +86,114 @@ impl QueryTranslator {
                     }
                 }
             } else {
-                if let bson::Bson::Document(val_doc) = value {
-                    if key == "_id" {
-                        return Err(format!("_id cannot be object"));
-                    } else if let Ok(res) = self.nested(key, val_doc, params) {
+                match value {
+                    bson::Bson::Document(val_doc) => {
+                        if key == "_id" {
+                            return Err(format!("_id cannot be object"));
+                        } else if let Ok(res) = self.nested(key, &val_doc, params) {
+                            if term_count > 0 {
+                                result.push_str(" AND ");
+                            }
+
+                            result.push_str(&res);
+                            term_count += 1;
+                        } else {
+                            return Err(format!("Error in nested query: {}", value));
+                        }
+                    }
+
+                    bson::Bson::Null => {
                         if term_count > 0 {
                             result.push_str(" AND ");
                         }
-
-                        result.push_str(&res);
+                        match key.as_str() {
+                            "_id" => {
+                                return Err(format!("_id cannot be null"));
+                            }
+                            _ => {
+                                result.push_str(&format!("json_field('{}', raw) IS NULL", key));
+                            }
+                        }
                         term_count += 1;
-                    } else {
-                        return Err(format!("Error in nested query: {}", value));
                     }
-                } else if value.is_array() {
-                    return Err(format!("Unsupported type: {}", value));
-                } else if value.is_string() || value.is_number() || value.is_boolean() || value.is_f64() || value.is_i64() || value.is_u64() {
-                    if term_count > 0 {
-                        result.push_str(" AND ");
+
+                    bson::Bson::Array(arr) => {
+                        return Err(format!("Unsupported type: {}", value));
                     }
-                    match key.as_str() {
-                        "_id" => {
-                            result.push_str(&format!("{} = '{}'", key, value));
+
+                    bson::Bson::String(val) => {
+                        if term_count > 0 {
+                            result.push_str(" AND ");
                         }
-                        _ => {
-                            result.push_str(&format!("json_field('{}', raw) = {}", key, self.value(value, params).unwrap()));
+                        match key.as_str() {
+                            "_id" => {
+                                return Err(format!("_id cannot be string"));
+                            }
+                            _ => {
+                                result.push_str(&format!("json_field('{}', raw) = {}", key, self.value(value, params).unwrap()));
+                            }
                         }
+                        term_count += 1;
                     }
-                    term_count += 1;
-                } else if *value == bson::Bson::Null {
-                    if term_count > 0 {
-                        result.push_str(" AND ");
-                    }
-                    match key.as_str() {
-                        "_id" => {
-                            return Err(format!("_id cannot be null"));
+                    bson::Bson::Int32(val) => {
+                        if term_count > 0 {
+                            result.push_str(" AND ");
                         }
-                        _ => {
-                            result.push_str(&format!("json_field('{}', raw) IS NULL", key));
+                        match key.as_str() {
+                            "_id" => {
+                                result.push_str(&format!("{} = '{}'", key, val));
+                            }
+                            _ => {
+                                result.push_str(&format!("json_field('{}', raw) = {}", key, self.value(value, params).unwrap()));
+                            }
                         }
+                        term_count += 1;
                     }
-                    term_count += 1;
-                } else {
-                    return Err(format!("Unsupported type: {}", value));
+                    bson::Bson::Int64(val) => {
+                        if term_count > 0 {
+                            result.push_str(" AND ");
+                        }
+                        match key.as_str() {
+                            "_id" => {
+                                result.push_str(&format!("{} = '{}'", key, val));
+                            }
+                            _ => {
+                                result.push_str(&format!("json_field('{}', raw) = {}", key, self.value(value, params).unwrap()));
+                            }
+                        }
+                        term_count += 1;
+                    }
+                    bson::Bson::Double(val) => {
+                        if term_count > 0 {
+                            result.push_str(" AND ");
+                        }
+                        match key.as_str() {
+                            "_id" => {
+                                return Err(format!("_id cannot be double"));
+                            }
+                            _ => {
+                                result.push_str(&format!("json_field('{}', raw) = {}", key, self.value(value, params).unwrap()));
+                            }
+                        }
+                        term_count += 1;
+                    }
+                    bson::Bson::Boolean(val) => {
+                        if term_count > 0 {
+                            result.push_str(" AND ");
+                        }
+                        match key.as_str() {
+                            "_id" => {
+                                return Err(format!("_id cannot be boolean"));
+                            }
+                            _ => {
+                                result.push_str(&format!("json_field('{}', raw) = {}", key, self.value(value, params).unwrap()));
+                            }
+                        }
+                        term_count += 1;
+                    }
+                    _ => {
+                        return Err(format!("Unsupported type: {}", value));
+                    }
                 }
             }
         }
@@ -139,7 +204,7 @@ impl QueryTranslator {
     fn value(&self, value: &bson::Bson, params: &mut Vec<rusqlite::types::Value>) -> Result<String, String> {
         match value {
             bson::Bson::String(val) => {
-                params.push(rusqlite::types::Value::from(*val));
+                params.push(rusqlite::types::Value::from((*val).clone()));
             }
             bson::Bson::Int32(val) => {
                 params.push(rusqlite::types::Value::from(*val));
@@ -170,59 +235,147 @@ impl QueryTranslator {
         for (key, value) in value_doc.iter() {
             if key.chars().nth(0).unwrap() == '$' {
                 match key.as_str() {
-                    "$lt" => {
-                        if value.is_number() || value.is_string() {
+                    "$lt" => match value {
+                        bson::Bson::Int32(val) => {
                             if term_count > 0 {
                                 return Err(format!("Error in $lt: {}", value));
                             }
 
                             return Ok(format!("json_field('{}', raw) < {}", scope, self.value(value, params).unwrap()));
-                        } else {
+                        }
+                        bson::Bson::Int64(val) => {
+                            if term_count > 0 {
+                                return Err(format!("Error in $lt: {}", value));
+                            }
+
+                            return Ok(format!("json_field('{}', raw) < {}", scope, self.value(value, params).unwrap()));
+                        }
+                        bson::Bson::Double(val) => {
+                            if term_count > 0 {
+                                return Err(format!("Error in $lt: {}", value));
+                            }
+
+                            return Ok(format!("json_field('{}', raw) < {}", scope, self.value(value, params).unwrap()));
+                        }
+                        bson::Bson::String(val) => {
+                            if term_count > 0 {
+                                return Err(format!("Error in $lt: {}", value));
+                            }
+
+                            return Ok(format!("json_field('{}', raw) < {}", scope, self.value(value, params).unwrap()));
+                        }
+                        _ => {
                             return Err(format!("Error in $lt: {}", value));
                         }
-                    }
-                    "$gt" => {
-                        if value.is_number() || value.is_string() {
+                    },
+                    "$gt" => match value {
+                        bson::Bson::Int32(val) => {
                             if term_count > 0 {
                                 return Err(format!("Error in $gt: {}", value));
                             }
 
                             return Ok(format!("json_field('{}', raw) > {}", scope, self.value(value, params).unwrap()));
-                        } else {
+                        }
+                        bson::Bson::Int64(val) => {
+                            if term_count > 0 {
+                                return Err(format!("Error in $gt: {}", value));
+                            }
+
+                            return Ok(format!("json_field('{}', raw) > {}", scope, self.value(value, params).unwrap()));
+                        }
+                        bson::Bson::Double(val) => {
+                            if term_count > 0 {
+                                return Err(format!("Error in $gt: {}", value));
+                            }
+
+                            return Ok(format!("json_field('{}', raw) > {}", scope, self.value(value, params).unwrap()));
+                        }
+                        bson::Bson::String(val) => {
+                            if term_count > 0 {
+                                return Err(format!("Error in $gt: {}", value));
+                            }
+
+                            return Ok(format!("json_field('{}', raw) > {}", scope, self.value(value, params).unwrap()));
+                        }
+                        _ => {
                             return Err(format!("Error in $gt: {}", value));
                         }
-                    }
-                    "$gte" => {
-                        if value.is_number() || value.is_string() {
+                    },
+                    "$gte" => match value {
+                        bson::Bson::Int32(val) => {
                             if term_count > 0 {
-                                return Err(format!("Error in $gte: {}", value));
+                                return Err(format!("Error in $gt: {}", value));
                             }
 
                             return Ok(format!("json_field('{}', raw) >= {}", scope, self.value(value, params).unwrap()));
-                        } else {
-                            return Err(format!("Error in $gte: {}", value));
                         }
-                    }
-                    "$eq" => {
-                        if value.is_number() || value.is_string() {
+                        bson::Bson::Int64(val) => {
                             if term_count > 0 {
-                                return Err(format!("Error in $eq: {}", value));
+                                return Err(format!("Error in $gt: {}", value));
+                            }
+
+                            return Ok(format!("json_field('{}', raw) >= {}", scope, self.value(value, params).unwrap()));
+                        }
+                        bson::Bson::Double(val) => {
+                            if term_count > 0 {
+                                return Err(format!("Error in $gt: {}", value));
+                            }
+
+                            return Ok(format!("json_field('{}', raw) >= {}", scope, self.value(value, params).unwrap()));
+                        }
+                        bson::Bson::String(val) => {
+                            if term_count > 0 {
+                                return Err(format!("Error in $gt: {}", value));
+                            }
+
+                            return Ok(format!("json_field('{}', raw) >= {}", scope, self.value(value, params).unwrap()));
+                        }
+                        _ => {
+                            return Err(format!("Error in $gt: {}", value));
+                        }
+                    },
+                    "$eq" => match value {
+                        bson::Bson::Int32(val) => {
+                            if term_count > 0 {
+                                return Err(format!("Error in $gt: {}", value));
                             }
 
                             return Ok(format!("json_field('{}', raw) = {}", scope, self.value(value, params).unwrap()));
-                        } else {
-                            return Err(format!("Error in $eq: {}", value));
                         }
-                    }
+                        bson::Bson::Int64(val) => {
+                            if term_count > 0 {
+                                return Err(format!("Error in $gt: {}", value));
+                            }
+
+                            return Ok(format!("json_field('{}', raw) = {}", scope, self.value(value, params).unwrap()));
+                        }
+                        bson::Bson::Double(val) => {
+                            if term_count > 0 {
+                                return Err(format!("Error in $gt: {}", value));
+                            }
+
+                            return Ok(format!("json_field('{}', raw) = {}", scope, self.value(value, params).unwrap()));
+                        }
+                        bson::Bson::String(val) => {
+                            if term_count > 0 {
+                                return Err(format!("Error in $gt: {}", value));
+                            }
+
+                            return Ok(format!("json_field('{}', raw) = {}", scope, self.value(value, params).unwrap()));
+                        }
+                        _ => {
+                            return Err(format!("Error in $gt: {}", value));
+                        }
+                    },
                     "$in" => {
-                        if value.is_array() {
+                        if let bson::Bson::Array(arr) = value {
                             if term_count > 0 {
                                 return Err(format!("Error in $in: {}", value));
                             }
 
                             let mut in_values = String::new();
 
-                            for val in value.as_array().unwrap() {
+                            for val in arr {
                                 if in_values.len() > 0 {
                                     in_values.push_str(", ");
                                 }
@@ -234,37 +387,81 @@ impl QueryTranslator {
                             return Err(format!("Error in $in: {}", value));
                         }
                     }
-                    "$lte" => {
-                        if value.is_number() || value.is_string() {
+                    "$lte" => match value {
+                        bson::Bson::Int32(val) => {
                             if term_count > 0 {
-                                return Err(format!("Error in $lte: {}", value));
+                                return Err(format!("Error in $gt: {}", value));
                             }
 
                             return Ok(format!("json_field('{}', raw) <= {}", scope, self.value(value, params).unwrap()));
-                        } else {
-                            return Err(format!("Error in $lte: {}", value));
                         }
-                    }
-                    "$ne" => {
-                        if value.is_number() || value.is_string() {
+                        bson::Bson::Int64(val) => {
                             if term_count > 0 {
-                                return Err(format!("Error in $ne: {}", value));
+                                return Err(format!("Error in $gt: {}", value));
+                            }
+
+                            return Ok(format!("json_field('{}', raw) <= {}", scope, self.value(value, params).unwrap()));
+                        }
+                        bson::Bson::Double(val) => {
+                            if term_count > 0 {
+                                return Err(format!("Error in $gt: {}", value));
+                            }
+
+                            return Ok(format!("json_field('{}', raw) <= {}", scope, self.value(value, params).unwrap()));
+                        }
+                        bson::Bson::String(val) => {
+                            if term_count > 0 {
+                                return Err(format!("Error in $gt: {}", value));
+                            }
+
+                            return Ok(format!("json_field('{}', raw) <= {}", scope, self.value(value, params).unwrap()));
+                        }
+                        _ => {
+                            return Err(format!("Error in $gt: {}", value));
+                        }
+                    },
+                    "$ne" => match value {
+                        bson::Bson::Int32(val) => {
+                            if term_count > 0 {
+                                return Err(format!("Error in $gt: {}", value));
                             }
 
                             return Ok(format!("json_field('{}', raw) != {}", scope, self.value(value, params).unwrap()));
-                        } else {
-                            return Err(format!("Error in $ne: {}", value));
                         }
-                    }
+                        bson::Bson::Int64(val) => {
+                            if term_count > 0 {
+                                return Err(format!("Error in $gt: {}", value));
+                            }
+
+                            return Ok(format!("json_field('{}', raw) != {}", scope, self.value(value, params).unwrap()));
+                        }
+                        bson::Bson::Double(val) => {
+                            if term_count > 0 {
+                                return Err(format!("Error in $gt: {}", value));
+                            }
+
+                            return Ok(format!("json_field('{}', raw) != {}", scope, self.value(value, params).unwrap()));
+                        }
+                        bson::Bson::String(val) => {
+                            if term_count > 0 {
+                                return Err(format!("Error in $gt: {}", value));
+                            }
+
+                            return Ok(format!("json_field('{}', raw) != {}", scope, self.value(value, params).unwrap()));
+                        }
+                        _ => {
+                            return Err(format!("Error in $gt: {}", value));
+                        }
+                    },
                     "$nin" => {
-                        if value.is_array() {
+                        if let bson::Bson::Array(arr) = value {
                             if term_count > 0 {
                                 return Err(format!("Error in $nin: {}", value));
                             }
 
                             let mut in_values = String::new();
 
-                            for val in value.as_array().unwrap() {
+                            for val in arr {
                                 if in_values.len() > 0 {
                                     in_values.push_str(", ");
                                 }
@@ -277,7 +474,7 @@ impl QueryTranslator {
                         }
                     }
                     "$exists" => {
-                        if value.is_boolean() {
+                        if let bson::Bson::Boolean(val) = value {
                             if term_count > 0 {
                                 return Err(format!("Error in $exists: {}", value));
                             }
@@ -287,55 +484,74 @@ impl QueryTranslator {
                             return Err(format!("Error in $exists: {}", value));
                         }
                     }
-                    "$type" => {
-                        if value.is_string() {
+                    "$type" => match value {
+                        bson::Bson::String(val) => {
                             if term_count > 0 {
                                 return Err(format!("Error in $exists: {}", value));
                             }
 
                             return Ok(format!("json_field_type('{}', raw) = {}", scope, self.value(value, params).unwrap()));
-                        } else if value.is_array() {
+                        }
+                        bson::Bson::Array(arr) => {
                             if term_count > 0 {
                                 return Err(format!("Error in $exists: {}", value));
                             }
 
                             let mut in_values = String::new();
 
-                            for val in value.as_array().unwrap() {
-                                if !val.is_string() {
-                                    return Err(format!("Error in $exists: {}", value));
-                                } else {
+                            for val in arr {
+                                if let bson::Bson::String(val_str) = val {
                                     if in_values.len() > 0 {
                                         in_values.push_str(", ");
                                     }
 
                                     in_values.push_str(self.value(val, params).unwrap().as_str());
+                                } else {
+                                    return Err(format!("Error in $exists: {}", value));
                                 }
                             }
 
                             return Ok(format!("json_field_type('{}', raw) IN ({})", scope, in_values));
                         }
-                    }
-                    "$size" => {
-                        if value.is_number() {
+                        _ => {
+                            return Err(format!("Error in $exists: {}", value));
+                        }
+                    },
+                    "$size" => match value {
+                        bson::Bson::Int32(val) => {
                             if term_count > 0 {
                                 return Err(format!("Error in $size: {}", value));
                             }
 
                             return Ok(format!("json_field_size('{}', raw) = {}", scope, self.value(value, params).unwrap()));
-                        } else {
+                        }
+                        bson::Bson::Int64(val) => {
+                            if term_count > 0 {
+                                return Err(format!("Error in $size: {}", value));
+                            }
+
+                            return Ok(format!("json_field_size('{}', raw) = {}", scope, self.value(value, params).unwrap()));
+                        }
+                        bson::Bson::Double(val) => {
+                            if term_count > 0 {
+                                return Err(format!("Error in $size: {}", value));
+                            }
+
+                            return Ok(format!("json_field_size('{}', raw) = {}", scope, self.value(value, params).unwrap()));
+                        }
+                        _ => {
                             return Err(format!("Error in $size: {}", value));
                         }
-                    }
+                    },
                     "$all" => {
-                        if value.is_array() {
+                        if let bson::Bson::Array(arr) = value {
                             if term_count > 0 {
                                 return Err(format!("Error in $all: {}", value));
                             }
 
                             let mut in_values = String::new();
 
-                            for val in value.as_array().unwrap() {
+                            for val in arr {
                                 if in_values.len() > 0 {
                                     in_values.push_str(" AND ");
                                 }
@@ -349,14 +565,14 @@ impl QueryTranslator {
                         }
                     }
                     "$elemMatch" => {
-                        if value.is_array() {
+                        if let bson::Bson::Array(arr) = value {
                             if term_count > 0 {
                                 return Err(format!("Error in $elemMatch: {}", value));
                             }
 
                             let mut in_values = String::new();
 
-                            for val in value.as_array().unwrap() {
+                            for val in arr {
                                 if in_values.len() > 0 {
                                     in_values.push_str(", ");
                                 }
@@ -369,60 +585,92 @@ impl QueryTranslator {
                             return Err(format!("Error in $elemMatch: {}", value));
                         }
                     }
-                    "$bitsAllClear" => {
-                        if value.is_u64() {
+                    "$bitsAllClear" => match value {
+                        bson::Bson::Int64(val) => {
                             if term_count > 0 {
                                 return Err(format!("Error in $bitsAllClear: {}", value));
                             }
 
                             return Ok(format!("json_field_bits_all_clear('{}', raw, {})", scope, self.value(value, params).unwrap()));
-                        } else {
+                        }
+                        bson::Bson::Int32(val) => {
+                            if term_count > 0 {
+                                return Err(format!("Error in $bitsAllClear: {}", value));
+                            }
+
+                            return Ok(format!("json_field_bits_all_clear('{}', raw, {})", scope, self.value(value, params).unwrap()));
+                        }
+                        _ => {
                             return Err(format!("Error in $bitsAllClear: {}", value));
                         }
-                    }
-                    "$bitsAllSet" => {
-                        if value.is_u64() {
+                    },
+                    "$bitsAllSet" => match value {
+                        bson::Bson::Int64(val) => {
                             if term_count > 0 {
                                 return Err(format!("Error in $bitsAllSet: {}", value));
                             }
 
                             return Ok(format!("json_field_bits_all_set('{}', raw, {})", scope, self.value(value, params).unwrap()));
-                        } else {
+                        }
+                        bson::Bson::Int32(val) => {
+                            if term_count > 0 {
+                                return Err(format!("Error in $bitsAllSet: {}", value));
+                            }
+
+                            return Ok(format!("json_field_bits_all_set('{}', raw, {})", scope, self.value(value, params).unwrap()));
+                        }
+                        _ => {
                             return Err(format!("Error in $bitsAllSet: {}", value));
                         }
-                    }
-                    "$bitsAnyClear" => {
-                        if value.is_u64() {
+                    },
+                    "$bitsAnyClear" => match value {
+                        bson::Bson::Int64(val) => {
                             if term_count > 0 {
                                 return Err(format!("Error in $bitsAnyClear: {}", value));
                             }
 
                             return Ok(format!("json_field_bits_any_clear('{}', raw, {})", scope, self.value(value, params).unwrap()));
-                        } else {
+                        }
+                        bson::Bson::Int32(val) => {
+                            if term_count > 0 {
+                                return Err(format!("Error in $bitsAnyClear: {}", value));
+                            }
+
+                            return Ok(format!("json_field_bits_any_clear('{}', raw, {})", scope, self.value(value, params).unwrap()));
+                        }
+                        _ => {
                             return Err(format!("Error in $bitsAnyClear: {}", value));
                         }
-                    }
-                    "$bitsAnySet" => {
-                        if value.is_u64() {
+                    },
+                    "$bitsAnySet" => match value {
+                        bson::Bson::Int64(val) => {
                             if term_count > 0 {
                                 return Err(format!("Error in $bitsAnySet: {}", value));
                             }
 
                             return Ok(format!("json_field_bits_any_set('{}', raw, {})", scope, self.value(value, params).unwrap()));
-                        } else {
+                        }
+                        bson::Bson::Int32(val) => {
+                            if term_count > 0 {
+                                return Err(format!("Error in $bitsAnySet: {}", value));
+                            }
+
+                            return Ok(format!("json_field_bits_any_set('{}', raw, {})", scope, self.value(value, params).unwrap()));
+                        }
+                        _ => {
                             return Err(format!("Error in $bitsAnySet: {}", value));
                         }
-                    }
+                    },
                     "$mod" => {
-                        if value.is_array() {
-                            if value.as_array().unwrap().len() != 2 {
+                        if let bson::Bson::Array(arr) = value {
+                            if arr.len() != 2 {
                                 return Err(format!("Error in $mod: {}", value));
                             }
 
-                            let divisor = value.as_array().unwrap()[0].clone();
-                            let remainder = value.as_array().unwrap()[1].clone();
+                            let divisor = arr[0].clone();
+                            let remainder = arr[1].clone();
 
-                            if divisor == 0 {
+                            if divisor.as_i64().unwrap() == 0 {
                                 return Err(format!("Error in $mod: {}, Divisor can't be zero.", value));
                             }
 
@@ -433,12 +681,12 @@ impl QueryTranslator {
                     }
                     //todo $jsonSchema and $text not implemented
                     "$regex" => {
-                        if value.is_string() {
+                        if let bson::Bson::String(_) = value {
                             let mut options = String::new();
-                            if value_doc.keys().len() > 1 {
+                            if value_doc.keys().count() > 1 {
                                 if let Some(option_obj) = value_doc.get("$options") {
-                                    if option_obj.is_string() {
-                                        options = option_obj.as_str().unwrap().to_string();
+                                    if let bson::Bson::String(str_val) = option_obj {
+                                        options = str_val.to_string();
                                     } else {
                                         return Err(format!("Error in $regex: {}", value));
                                     }
@@ -447,7 +695,7 @@ impl QueryTranslator {
 
                             let regex = value;
 
-                            return Ok(format!("json_field_regex('{}', raw, {}, {})", scope, self.value(regex, params).unwrap(), self.value(&json!(options), params).unwrap()));
+                            return Ok(format!("json_field_regex('{}', raw, {}, {})", scope, self.value(regex, params).unwrap(), self.value(&bson::Bson::String(options), params).unwrap()));
                         } else {
                             return Err(format!("Error in $regex: {}", value));
                         }
@@ -455,33 +703,74 @@ impl QueryTranslator {
                     _ => {}
                 }
             } else {
-                if value.is_object() {
-                    if let Ok(res) = self.nested(key, value, params) {
+                match value {
+                    bson::Bson::Document(value_doc) => {
+                        if let Ok(res) = self.nested(key, &value_doc, params) {
+                            if term_count > 0 {
+                                result.push_str(" AND ");
+                            }
+                            result.push_str(&res);
+                            term_count += 1;
+                        } else {
+                            return Err(format!("Error in nested query: {}", value_doc));
+                        }
+                    }
+
+                    bson::Bson::Array(arr) => {
+                        return Err(format!("Error in array: {:?}", arr));
+                    }
+
+                    bson::Bson::String(value_str) => {
                         if term_count > 0 {
                             result.push_str(" AND ");
                         }
-
-                        result.push_str(&res);
+                        result.push_str(&format!("json_field('{}.{}', raw) = {}", scope, key, self.value(value, params).unwrap()));
                         term_count += 1;
-                    } else {
-                        return Err(format!("Error in nested query: {}", value));
-                    }
-                } else if value.is_array() {
-                } else if value.is_string() || value.is_number() || value.is_boolean() || value.is_f64() || value.is_i64() || value.is_u64() {
-                    if term_count > 0 {
-                        result.push_str(" AND ");
                     }
 
-                    result.push_str(&format!("json_field('{}.{}', raw) = {}", scope, key, self.value(value, params).unwrap()));
-                    term_count += 1;
-                } else if value.is_null() {
-                    if term_count > 0 {
-                        result.push_str(" AND ");
+                    bson::Bson::Int32(value_i32) => {
+                        if term_count > 0 {
+                            result.push_str(" AND ");
+                        }
+                        result.push_str(&format!("json_field('{}.{}', raw) = {}", scope, key, self.value(value, params).unwrap()));
+                        term_count += 1;
                     }
-                    result.push_str(&format!("json_field('{}.{}', raw) IS NULL", scope, key));
-                    term_count += 1;
-                } else {
-                    return Err(format!("Unsupported type: {}", value));
+
+                    bson::Bson::Int64(value_i64) => {
+                        if term_count > 0 {
+                            result.push_str(" AND ");
+                        }
+                        result.push_str(&format!("json_field('{}.{}', raw) = {}", scope, key, self.value(value, params).unwrap()));
+                        term_count += 1;
+                    }
+
+                    bson::Bson::Double(value_f64) => {
+                        if term_count > 0 {
+                            result.push_str(" AND ");
+                        }
+                        result.push_str(&format!("json_field('{}.{}', raw) = {}", scope, key, self.value(value, params).unwrap()));
+                        term_count += 1;
+                    }
+
+                    bson::Bson::Boolean(value_bool) => {
+                        if term_count > 0 {
+                            result.push_str(" AND ");
+                        }
+                        result.push_str(&format!("json_field('{}.{}', raw) = {}", scope, key, self.value(value, params).unwrap()));
+                        term_count += 1;
+                    }
+
+                    bson::Bson::Null => {
+                        if term_count > 0 {
+                            result.push_str(" AND ");
+                        }
+                        result.push_str(&format!("json_field('{}.{}', raw) IS NULL", scope, key));
+                        term_count += 1;
+                    }
+
+                    _ => {
+                        return Err(format!("Error in value: {:?}", value));
+                    }
                 }
             }
         }
@@ -498,8 +787,8 @@ impl QueryTranslator {
                     if key.chars().nth(0).unwrap() == '$' {
                         match key.as_str() {
                             "$or" => {
-                                if value.is_array() {
-                                    if let Ok(res) = self.or(value, params) {
+                                if let bson::Bson::Array(arr) = value {
+                                    if let Ok(res) = self.or(arr, params) {
                                         if term_count > 0 {
                                             result.push_str(" OR ");
                                         }
@@ -513,8 +802,8 @@ impl QueryTranslator {
                                 }
                             }
                             "$and" => {
-                                if value.is_array() {
-                                    if let Ok(res) = self.and(value, params) {
+                                if let bson::Bson::Array(arr) = value {
+                                    if let Ok(res) = self.and(arr, params) {
                                         if term_count > 0 {
                                             result.push_str(" OR ");
                                         }
@@ -528,8 +817,8 @@ impl QueryTranslator {
                                 }
                             }
                             "$not" => {
-                                if value.is_object() {
-                                    if let Ok(res) = self.not(value, params) {
+                                if let bson::Bson::Document(value_doc) = value {
+                                    if let Ok(res) = self.not(value_doc, params) {
                                         if term_count > 0 {
                                             result.push_str(" OR ");
                                         }
@@ -543,19 +832,23 @@ impl QueryTranslator {
                                 }
                             }
                             "$nor" => {
-                                if value.is_array() {
+                                if let bson::Bson::Array(arr) = value {
                                     if term_count > 0 {
                                         result.push_str(" OR ");
                                     }
 
                                     let mut in_values = String::new();
 
-                                    for val in value.as_array().unwrap() {
-                                        if in_values.len() > 0 {
-                                            in_values.push_str(" OR ");
-                                        }
+                                    for val in arr {
+                                        if let bson::Bson::Document(value_doc) = val {
+                                            if in_values.len() > 0 {
+                                                in_values.push_str(" OR ");
+                                            }
 
-                                        in_values.push_str(self.nested("", val, params).unwrap().as_str());
+                                            in_values.push_str(self.nested("", value_doc, params).unwrap().as_str());
+                                        } else {
+                                            return Err(format!("Error in $nor: {}", value));
+                                        }
                                     }
 
                                     result.push_str(&format!("NOT ({}) ", &in_values));
@@ -569,38 +862,71 @@ impl QueryTranslator {
                             }
                         }
                     } else {
-                        if value.is_object() {
-                            if let Ok(res) = self.nested(key, value, params) {
+                        match value {
+                            bson::Bson::String(val) => {
                                 if term_count > 0 {
                                     result.push_str(" OR ");
                                 }
-
-                                result.push_str(&res);
+                                result.push_str(&format!("json_field('{}', raw) = {}", key, self.value(value, params).unwrap()));
                                 term_count += 1;
-                            } else {
-                                return Err(format!("Error in nested query: {}", value));
                             }
-                        } else if value.is_array() {
-                        } else if value.is_string() || value.is_number() || value.is_boolean() || value.is_f64() || value.is_i64() || value.is_u64() {
-                            if term_count > 0 {
-                                result.push_str(" OR ");
+                            bson::Bson::Int64(val) => {
+                                if term_count > 0 {
+                                    result.push_str(" OR ");
+                                }
+                                result.push_str(&format!("json_field('{}', raw) = {}", key, self.value(value, params).unwrap()));
+                                term_count += 1;
                             }
-
-                            result.push_str(&format!("json_field('{}', raw) = {}", key, self.value(value, params).unwrap()));
-                            term_count += 1;
-                        } else if value.is_null() {
-                            if term_count > 0 {
-                                result.push_str(" OR ");
+                            bson::Bson::Int32(val) => {
+                                if term_count > 0 {
+                                    result.push_str(" OR ");
+                                }
+                                result.push_str(&format!("json_field('{}', raw) = {}", key, self.value(value, params).unwrap()));
+                                term_count += 1;
                             }
-                            result.push_str(&format!("json_field('{}', raw) IS NULL", key));
-                            term_count += 1;
-                        } else {
-                            return Err(format!("Unsupported type: {}", value));
+                            bson::Bson::Double(val) => {
+                                if term_count > 0 {
+                                    result.push_str(" OR ");
+                                }
+                                result.push_str(&format!("json_field('{}', raw) = {}", key, self.value(value, params).unwrap()));
+                                term_count += 1;
+                            }
+                            bson::Bson::Boolean(val) => {
+                                if term_count > 0 {
+                                    result.push_str(" OR ");
+                                }
+                                result.push_str(&format!("json_field('{}', raw) = {}", key, self.value(value, params).unwrap()));
+                                term_count += 1;
+                            }
+                            bson::Bson::Document(value_doc) => {
+                                if let Ok(res) = self.nested(key, &value_doc, params) {
+                                    if term_count > 0 {
+                                        result.push_str(" OR ");
+                                    }
+                                    result.push_str(&res);
+                                    term_count += 1;
+                                } else {
+                                    return Err(format!("Error in nested query: {}", value));
+                                }
+                            }
+                            bson::Bson::Array(arr) => {
+                                return Err(format!("Error in array: {}", value));
+                            }
+                            bson::Bson::Null => {
+                                if term_count > 0 {
+                                    result.push_str(" OR ");
+                                }
+                                result.push_str(&format!("json_field('{}', raw) IS NULL", key));
+                                term_count += 1;
+                            }
+                            _ => {
+                                return Err(format!("Unsupported type: {}", value));
+                            }
                         }
                     }
                 }
             } else {
-                return Err(format!("Unsupported type: {}", value));
+                return Err(format!("Unsupported type"));
             }
         }
         Ok(result)
@@ -630,8 +956,8 @@ impl QueryTranslator {
                                 }
                             }
                             "$and" => {
-                                if value.is_array() {
-                                    if let Ok(res) = self.and(value, params) {
+                                if let bson::Bson::Array(arr) = value {
+                                    if let Ok(res) = self.and(arr, params) {
                                         if term_count > 0 {
                                             result.push_str(" AND ");
                                         }
@@ -645,8 +971,8 @@ impl QueryTranslator {
                                 }
                             }
                             "$not" => {
-                                if value.is_object() {
-                                    if let Ok(res) = self.not(value, params) {
+                                if let bson::Bson::Document(value_doc) = value {
+                                    if let Ok(res) = self.not(&value_doc, params) {
                                         if term_count > 0 {
                                             result.push_str(" AND ");
                                         }
@@ -660,19 +986,21 @@ impl QueryTranslator {
                                 }
                             }
                             "$nor" => {
-                                if value.is_array() {
+                                if let bson::Bson::Array(arr) = value {
                                     if term_count > 0 {
                                         result.push_str(" AND ");
                                     }
 
                                     let mut in_values = String::new();
 
-                                    for val in value.as_array().unwrap() {
-                                        if in_values.len() > 0 {
-                                            in_values.push_str(" OR ");
-                                        }
+                                    for val in arr {
+                                        if let bson::Bson::Document(doc) = val {
+                                            if in_values.len() > 0 {
+                                                in_values.push_str(" OR ");
+                                            }
 
-                                        in_values.push_str(self.nested("", val, params).unwrap().as_str());
+                                            in_values.push_str(self.nested("", &doc, params).unwrap().as_str());
+                                        }
                                     }
 
                                     result.push_str(&format!("NOT ({}) ", &in_values));
@@ -686,38 +1014,71 @@ impl QueryTranslator {
                             }
                         }
                     } else {
-                        if value.is_object() {
-                            if let Ok(res) = self.nested(key, value, params) {
+                        match value {
+                            bson::Bson::Document(doc) => {
+                                if let Ok(res) = self.nested(key, &doc, params) {
+                                    if term_count > 0 {
+                                        result.push_str(" AND ");
+                                    }
+                                    result.push_str(&res);
+                                    term_count += 1;
+                                } else {
+                                    return Err(format!("Error in nested query: {}", value));
+                                }
+                            }
+                            bson::Bson::Array(arr) => {
+                                return Err(format!("Error in array: {}", value));
+                            }
+                            bson::Bson::String(val) => {
                                 if term_count > 0 {
                                     result.push_str(" AND ");
                                 }
-
-                                result.push_str(&res);
+                                result.push_str(&format!("json_field('{}', raw) = {}", key, self.value(value, params).unwrap()));
                                 term_count += 1;
-                            } else {
-                                return Err(format!("Error in nested query: {}", value));
                             }
-                        } else if value.is_array() {
-                        } else if value.is_string() || value.is_number() || value.is_boolean() || value.is_f64() || value.is_i64() || value.is_u64() {
-                            if term_count > 0 {
-                                result.push_str(" AND ");
+                            bson::Bson::Int32(val) => {
+                                if term_count > 0 {
+                                    result.push_str(" AND ");
+                                }
+                                result.push_str(&format!("json_field('{}', raw) = {}", key, self.value(value, params).unwrap()));
+                                term_count += 1;
                             }
-
-                            result.push_str(&format!("json_field('{}', raw) = {}", key, self.value(value, params).unwrap()));
-                            term_count += 1;
-                        } else if value.is_null() {
-                            if term_count > 0 {
-                                result.push_str(" AND ");
+                            bson::Bson::Int64(val) => {
+                                if term_count > 0 {
+                                    result.push_str(" AND ");
+                                }
+                                result.push_str(&format!("json_field('{}', raw) = {}", key, self.value(value, params).unwrap()));
+                                term_count += 1;
                             }
-                            result.push_str(&format!("json_field('{}', raw) IS NULL", key));
-                            term_count += 1;
-                        } else {
-                            return Err(format!("Unsupported type: {}", value));
+                            bson::Bson::Boolean(val) => {
+                                if term_count > 0 {
+                                    result.push_str(" AND ");
+                                }
+                                result.push_str(&format!("json_field('{}', raw) = {}", key, self.value(value, params).unwrap()));
+                                term_count += 1;
+                            }
+                            bson::Bson::Double(val) => {
+                                if term_count > 0 {
+                                    result.push_str(" AND ");
+                                }
+                                result.push_str(&format!("json_field('{}', raw) = {}", key, self.value(value, params).unwrap()));
+                                term_count += 1;
+                            }
+                            bson::Bson::Null => {
+                                if term_count > 0 {
+                                    result.push_str(" AND ");
+                                }
+                                result.push_str(&format!("json_field('{}', raw) IS NULL", key));
+                                term_count += 1;
+                            }
+                            _ => {
+                                return Err(format!("Unsupported value: {}", value));
+                            }
                         }
                     }
                 }
             } else {
-                return Err(format!("Unsupported type: {}", value));
+                return Err(format!("Unsupported type"));
             }
         }
         Ok(result)
@@ -729,8 +1090,8 @@ impl QueryTranslator {
             if key.chars().nth(0).unwrap() == '$' {
                 match key.as_str() {
                     "$or" => {
-                        if value.is_array() {
-                            if let Ok(res) = self.or(value, params) {
+                        if let bson::Bson::Array(arr) = value {
+                            if let Ok(res) = self.or(arr, params) {
                                 result.push_str(&format!("json_field('{}', raw) IS NOT ({})", key, &res));
                             } else {
                                 return Err(format!("Error in $or: {}", value));
@@ -740,8 +1101,8 @@ impl QueryTranslator {
                         }
                     }
                     "$and" => {
-                        if value.is_array() {
-                            if let Ok(res) = self.and(value, params) {
+                        if let bson::Bson::Array(arr) = value {
+                            if let Ok(res) = self.and(arr, params) {
                                 result.push_str(&format!("json_field('{}', raw) IS NOT ({})", key, &res));
                             } else {
                                 return Err(format!("Error in $and: {}", value));
@@ -751,8 +1112,8 @@ impl QueryTranslator {
                         }
                     }
                     "$not" => {
-                        if value.is_object() {
-                            if let Ok(res) = self.not(value, params) {
+                        if let bson::Bson::Document(val_doc) = value {
+                            if let Ok(res) = self.not(val_doc, params) {
                                 result.push_str(&format!("json_field('{}', raw) IS NOT ({})", key, &res));
                             } else {
                                 return Err(format!("Error in $not: {}", value));
@@ -762,15 +1123,19 @@ impl QueryTranslator {
                         }
                     }
                     "$nor" => {
-                        if value.is_array() {
+                        if let bson::Bson::Array(arr) = value {
                             let mut in_values = String::new();
 
-                            for val in value.as_array().unwrap() {
-                                if in_values.len() > 0 {
-                                    in_values.push_str(" OR ");
-                                }
+                            for val in arr {
+                                if let bson::Bson::Document(doc) = val {
+                                    if in_values.len() > 0 {
+                                        in_values.push_str(" OR ");
+                                    }
 
-                                in_values.push_str(self.nested("", val, params).unwrap().as_str());
+                                    in_values.push_str(self.nested("", &doc, params).unwrap().as_str());
+                                } else {
+                                    return Err(format!("Error in $nor: {}", value));
+                                }
                             }
 
                             result.push_str(&format!("NOT ({}) ", &in_values));
@@ -783,20 +1148,38 @@ impl QueryTranslator {
                     }
                 }
             } else {
-                if value.is_object() {
-                    if let Ok(res) = self.nested(key, value, params) {
-                        result.push_str(&format!("json_field('{}', raw) IS NOT ({})", key, &res));
-                    } else {
-                        return Err(format!("Error in nested query: {}", value));
+                match value {
+                    bson::Bson::Document(doc) => {
+                        if let Ok(res) = self.nested(key, &doc, params) {
+                            result.push_str(&format!("json_field('{}', raw) IS NOT ({})", key, &res));
+                        } else {
+                            return Err(format!("Error in nested query: {}", value));
+                        }
                     }
-                } else if value.is_array() {
-                    return Err(format!("Unsupported type: {}", value));
-                } else if value.is_string() || value.is_number() || value.is_boolean() || value.is_f64() || value.is_i64() || value.is_u64() {
-                    result.push_str(&format!("json_field('{}', raw) IS NOT {}", key, self.value(value, params).unwrap()));
-                } else if value.is_null() {
-                    result.push_str(&format!("json_field('{}', raw) IS NOT NULL", key));
-                } else {
-                    return Err(format!("Unsupported type: {}", value));
+                    bson::Bson::Array(arr) => {
+                        return Err(format!("Unsupported type: {}", value));
+                    }
+                    bson::Bson::String(val) => {
+                        result.push_str(&format!("json_field('{}', raw) IS NOT {}", key, self.value(value, params).unwrap()));
+                    }
+                    bson::Bson::Boolean(val) => {
+                        result.push_str(&format!("json_field('{}', raw) IS NOT {}", key, self.value(value, params).unwrap()));
+                    }
+                    bson::Bson::Int64(val) => {
+                        result.push_str(&format!("json_field('{}', raw) IS NOT {}", key, self.value(value, params).unwrap()));
+                    }
+                    bson::Bson::Int32(val) => {
+                        result.push_str(&format!("json_field('{}', raw) IS NOT {}", key, self.value(value, params).unwrap()));
+                    }
+                    bson::Bson::Double(val) => {
+                        result.push_str(&format!("json_field('{}', raw) IS NOT {}", key, self.value(value, params).unwrap()));
+                    }
+                    bson::Bson::Null => {
+                        result.push_str(&format!("json_field('{}', raw) IS NOT NULL", key));
+                    }
+                    _ => {
+                        return Err(format!("Unsupported type: {}", value));
+                    }
                 }
             }
             break;

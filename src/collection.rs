@@ -59,7 +59,7 @@ pub struct Collection<'a> {
 }
 
 impl<'a> CollectionTrait for Collection<'a> {
-    fn find(&mut self, query: &serde_json::Value, options: &Option<SearchOption>, f: &mut dyn FnMut(&Record) -> std::result::Result<(), &'static str>) -> std::result::Result<(), &str> {
+    fn find(&mut self, query: &bson::Document, options: &Option<SearchOption>, f: &mut dyn FnMut(&Record) -> std::result::Result<(), &'static str>) -> std::result::Result<(), &str> {
         match (self.config.should_hash_document, self.config.should_log_last_modified) {
             (true, true) => find_internal::<_, _, true, true>(self.db, &self.config, query, options, f),
             (true, false) => find_internal::<_, _, true, false>(self.db, &self.config, query, options, f),
@@ -68,7 +68,7 @@ impl<'a> CollectionTrait for Collection<'a> {
         }
     }
 
-    fn count_document(&mut self, query: &serde_json::Value, options: &Option<SearchOption>) -> std::result::Result<i64, &str> {
+    fn count_document(&mut self, query: &bson::Document, options: &Option<SearchOption>) -> std::result::Result<i64, &str> {
         //todo implement skip limit
         let mut params = Vec::<rusqlite::types::Value>::new();
         let where_str: String = QueryTranslator {}.query_document(&query, &mut params).unwrap();
@@ -121,9 +121,9 @@ impl<'a> CollectionTrait for Collection<'a> {
         self.table_name.as_str()
     }
 
-    fn delete_one(&mut self, query: &serde_json::Value) -> std::result::Result<usize, String> {
+    fn delete_one(&mut self, query: &bson::Document) -> std::result::Result<usize, String> {
         let mut params = Vec::<rusqlite::types::Value>::new();
-        let where_str: String = QueryTranslator {}.query_document(&query, &mut params).unwrap();
+        let where_str: String = QueryTranslator {}.query_document(query, &mut params).unwrap();
         let db_internal = self.db;
         let conn = db_internal;
         // an alternative solution is SQLITE_ENABLE_UPDATE_DELETE_LIMIT
@@ -151,9 +151,9 @@ impl<'a> CollectionTrait for Collection<'a> {
         Ok(rows)
     }
 
-    fn delete_many(&mut self, query: &serde_json::Value) -> std::result::Result<usize, String> {
+    fn delete_many(&mut self, query: &bson::Document) -> std::result::Result<usize, String> {
         let mut params = Vec::<rusqlite::types::Value>::new();
-        let where_str: String = QueryTranslator {}.query_document(&query, &mut params).unwrap();
+        let where_str: String = QueryTranslator {}.query_document(query, &mut params).unwrap();
         //println!("where_str {}", &where_str);
         let db_internal = self.db;
         let conn = db_internal;
@@ -166,14 +166,13 @@ impl<'a> CollectionTrait for Collection<'a> {
         }
     }
 
-    fn distinct(&mut self, field: &str, query: &Option<&serde_json::Value>, options: &Option<SearchOption>) -> std::result::Result<i64, &str> {
+    fn distinct(&mut self, field: &str, query: &Option<bson::Document>, options: &Option<SearchOption>) -> std::result::Result<i64, &str> {
         //todo implement skip limit
         let mut params = Vec::<rusqlite::types::Value>::new();
         let mut where_str: String = String::new();
         if let Some(q) = query {
             where_str = QueryTranslator {}.query_document(q, &mut params).unwrap();
         }
-        //println!("where_str {}", &where_str);
         let mut option_str = String::new();
         if let Some(opt) = options {
             option_str = format!("LIMIT {} OFFSET {}", opt.limit, opt.skip);
@@ -197,9 +196,9 @@ impl<'a> CollectionTrait for Collection<'a> {
         }
     }
 
-    fn find_one(&mut self, query: &serde_json::Value, skip: i64) -> std::result::Result<Record, &str> {
+    fn find_one(&mut self, query: &bson::Document, skip: i64) -> std::result::Result<Record, &str> {
         let mut params = Vec::<rusqlite::types::Value>::new();
-        let where_str: String = QueryTranslator {}.query_document(&query, &mut params).unwrap();
+        let where_str: String = QueryTranslator {}.query_document(query, &mut params).unwrap();
         //println!("where_str {}", &where_str);
         let db_internal = self.db;
         let conn = db_internal;
@@ -247,7 +246,7 @@ impl<'a> CollectionTrait for Collection<'a> {
         }
     }
 
-    fn find_one_and_delete(&mut self, query: &serde_json::Value) -> std::result::Result<Option<Record>, String> {
+    fn find_one_and_delete(&mut self, query: &bson::Document) -> std::result::Result<Option<Record>, String> {
         let mut params = Vec::<rusqlite::types::Value>::new();
         let where_str: String = QueryTranslator {}.query_document(&query, &mut params).unwrap();
         //println!("where_str {}", &where_str);
@@ -293,7 +292,7 @@ impl<'a> CollectionTrait for Collection<'a> {
         }
     }
 
-    fn get_indexes(&mut self) -> Result<Vec<serde_json::Value>, String> {
+    fn get_indexes(&mut self) -> Result<Vec<Index>, String> {
         let db_internal = self.db;
         let conn = db_internal;
 
@@ -301,16 +300,19 @@ impl<'a> CollectionTrait for Collection<'a> {
         let mut stmt = conn.prepare(&format!("SELECT * FROM pragma_index_list('{}');", self.table_name)).unwrap();
         let mut rows = stmt.query([]).unwrap();
 
-        let mut result: Vec<serde_json::Value> = Vec::new();
+        let mut result= Vec::new();
         while let Ok(row_result) = rows.next() {
             if let Some(row) = row_result {
-                result.push(json!({
-                    "seq": row.get::<_, i64>(0).unwrap(),
-                    "name": row.get::<_, String>(1).unwrap(),
-                    "isUnique": row.get::<_, bool>(2).unwrap(),
-                    "type": row.get::<_, String>(3).unwrap(),
-                    "isPartial": row.get::<_, bool>(4).unwrap(),
-                }));
+
+                let index = Index {
+                    seq: row.get::<_, i64>(0).unwrap(),
+                    name: row.get::<_, String>(1).unwrap(),
+                    is_unique: row.get::<_, bool>(2).unwrap(),
+                    index_type: row.get::<_, String>(3).unwrap(),
+                    is_partial: row.get::<_, bool>(4).unwrap(),
+                };
+
+                result.push(index);
             } else {
                 break;
             }
@@ -318,7 +320,7 @@ impl<'a> CollectionTrait for Collection<'a> {
         Ok(result)
     }
 
-    fn insert_one(&mut self, document: &serde_json::Value) -> std::result::Result<Option<Record>, String> {
+    fn insert_one(&mut self, document: &bson::Document) -> std::result::Result<Option<Record>, String> {
         let bson_doc = bson::ser::to_document(&document).unwrap();
         let mut bytes: Vec<u8> = Vec::new();
         bson_doc.to_writer(&mut bytes).unwrap();
@@ -365,7 +367,7 @@ impl<'a> CollectionTrait for Collection<'a> {
         }
     }
 
-    fn insert_many(&mut self, documents: &Vec<serde_json::Value>) -> std::result::Result<(), String> {
+    fn insert_many(&mut self, documents: &Vec<bson::Document>) -> std::result::Result<(), String> {
         let mut stmt = self
             .db
             .prepare_cached(&format!("INSERT INTO [{}] (raw {}) VALUES (?1 {})", &self.table_name, if self.config.should_log_last_modified { ", _last_modified" } else { "" }, if self.config.should_log_last_modified { ", datetime('now')" } else { "" }))
@@ -388,14 +390,14 @@ impl<'a> CollectionTrait for Collection<'a> {
         Ok(())
     }
 
-    fn replace_one(&mut self, query: &serde_json::Value, replacement: &serde_json::Value, skip: i64) -> std::result::Result<Option<Record>, String> {
+    fn replace_one(&mut self, query: &bson::Document, replacement: &bson::Document, skip: i64) -> std::result::Result<Option<Record>, String> {
         let mut params = Vec::<rusqlite::types::Value>::new();
         let bson_doc = bson::ser::to_document(&replacement).unwrap();
         let mut bytes: Vec<u8> = Vec::new();
         bson_doc.to_writer(&mut bytes).unwrap();
         params.push(rusqlite::types::Value::Blob(bytes));
 
-        let where_str: String = QueryTranslator {}.query_document(&query, &mut params).unwrap();
+        let where_str: String = QueryTranslator {}.query_document(query, &mut params).unwrap();
 
         let mut stmt = self
             .db
@@ -452,14 +454,14 @@ impl<'a> CollectionTrait for Collection<'a> {
         }
     }
 
-    fn update_one(&mut self, query: &serde_json::Value, update: &serde_json::Value, skip: i64, upsert: bool) -> std::result::Result<Option<Record>, String> {
+    fn update_one(&mut self, query: &bson::Document, update: &bson::Document, skip: i64, upsert: bool) -> std::result::Result<Option<Record>, String> {
         let mut params = Vec::<rusqlite::types::Value>::new();
         let update_bson_doc = bson::ser::to_document(&update).unwrap();
         let mut bytes: Vec<u8> = Vec::new();
         update_bson_doc.to_writer(&mut bytes).unwrap();
         params.push(rusqlite::types::Value::Blob(bytes));
 
-        let where_str: String = QueryTranslator {}.query_document(&query, &mut params).unwrap();
+        let where_str: String = QueryTranslator {}.query_document(query, &mut params).unwrap();
 
         if upsert {
             let mut stmt = self
@@ -570,9 +572,9 @@ impl<'a> CollectionTrait for Collection<'a> {
 
     /// This function update all documents match the `query` by the `update` object. If `upsert` is true, and no documents are found by
     /// query, we will create a new document using the `update` object.
-    fn update_many(&mut self, query: &serde_json::Value, update: &serde_json::Value, limit: i64, skip: i64, upsert: bool) -> Result<i64, String> {
+    fn update_many(&mut self, query: &bson::Document, update: &bson::Document, limit: i64, skip: i64, upsert: bool) -> Result<i64, String> {
         let mut params = Vec::<rusqlite::types::Value>::new();
-        let update_bson_doc = bson::ser::to_document(&update).unwrap();
+        let update_bson_doc = bson::ser::to_document(update).unwrap();
         let mut bytes: Vec<u8> = Vec::new();
         update_bson_doc.to_writer(&mut bytes).unwrap();
         params.push(rusqlite::types::Value::Blob(bytes));

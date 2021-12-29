@@ -43,6 +43,15 @@
 //! 
 //! ## Unsupported Mongodb Features
 //! 
+//! The following mongodb functions are not implemented, because I couldn't find a good way to return the modified document after an update with sqlite in a single SQL statement.
+//! * find_one_and_replace
+//! * find_one_and_update
+//! * find_and_modify
+//! 
+//! Aggregation is also not implemented, it is not a feature I use very much. I will look into it later.
+//! 
+//! Transaction implementation is also different from mongodb. Hoardbase's transaction can't return records. It is mainly used for creating related documents.
+//! 
 //! ## Internals
 //! The key mechanism for storing and querying json data using sqlite is serializing json documents into the blob type. Currently [`bson`] is used 
 //! as the serialized format. Another interesting format is [Amazon Ion](https://amzn.github.io/ion-docs/). I may add support for Ion in the future
@@ -110,7 +119,7 @@ mod tests {
             assert_eq!(row.data.as_object().unwrap().get("kind").unwrap().as_str().unwrap(), "apples");
             assert_eq!(row.data.as_object().unwrap().get("qty").unwrap().as_i64().unwrap(), 5);
 
-            collection.count2_document(&json!({ "kind": "apples" })).unwrap();
+           
         }
     
         std::fs::remove_file("test_find.db").unwrap();
