@@ -100,7 +100,7 @@ impl std::fmt::Display for Index {
 #[derive(Debug, Clone)]
 pub struct Record {
     pub id: i64,
-    pub data: serde_json::Value,
+    pub data: bson::Document,
     pub hash: String,
     pub last_modified: DateTime<Utc>,
 }
@@ -172,28 +172,28 @@ pub fn find_internal<A, C: Adapter<A>, const H:bool, const L:bool>(conn: &C, con
         if let Some(row) = row_result {
             let id = row.get::<_, i64>(0).unwrap();
             let bson_doc: bson::Document = bson::from_reader(row.get::<_, Vec<u8>>(1).unwrap().as_slice()).unwrap();
-            let json_doc: serde_json::Value = bson::Bson::from(&bson_doc).into();
+         
             let record = match (config.should_hash_document, config.should_log_last_modified) {
                 (false, false) => Record {
                     id: id,
-                    data: json_doc,
+                    data: bson_doc,
                     hash: String::new(),
                     last_modified: Utc.timestamp(0, 0),
                 },
                 (true, false) => {
                     let hash = row.get::<_, String>(2).unwrap();
-                    Record { id: id, data: json_doc, hash: hash, last_modified: Utc.timestamp(0, 0) }
+                    Record { id: id, data: bson_doc, hash: hash, last_modified: Utc.timestamp(0, 0) }
                 }
                 (true, true) => {
                     let hash = row.get::<_, String>(2).unwrap();
                     let last_modified = row.get::<_, DateTime<Utc>>(3).unwrap();
-                    Record { id: id, data: json_doc, hash: hash, last_modified: last_modified }
+                    Record { id: id, data: bson_doc, hash: hash, last_modified: last_modified }
                 }
                 (false, true) => {
                     let last_modified = row.get::<_, DateTime<Utc>>(2).unwrap();
                     Record {
                         id: id,
-                        data: json_doc,
+                        data: bson_doc,
                         hash: String::new(),
                         last_modified: last_modified,
                     }

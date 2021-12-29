@@ -214,33 +214,31 @@ impl<'a> CollectionTrait for Collection<'a> {
                 .unwrap();
 
             let bson_doc: bson::Document = bson::from_reader(row.1.as_slice()).unwrap();
-            let json_doc: serde_json::Value = bson::Bson::from(&bson_doc).into();
+
             Ok(Record {
                 id: row.0,
-                data: json_doc,
+                data: bson_doc,
                 hash: String::new(),
                 last_modified: Utc.timestamp(0, 0),
             })
         } else if self.config.should_hash_document == true && self.config.should_log_last_modified == false {
             let row = stmt.query_row(params_from_iter(params.iter()), |row| Ok((row.get::<_, i64>(0).unwrap(), row.get::<_, Vec<u8>>(1).unwrap(), row.get::<_, String>(2).unwrap()))).unwrap();
             let bson_doc: bson::Document = bson::from_reader(row.1.as_slice()).unwrap();
-            let json_doc: serde_json::Value = bson::Bson::from(&bson_doc).into();
+
             Ok(Record {
                 id: row.0,
-                data: json_doc,
+                data: bson_doc,
                 hash: row.2,
                 last_modified: Utc.timestamp(0, 0),
             })
         } else if self.config.should_hash_document == true && self.config.should_log_last_modified == true {
             let row = stmt.query_row(params_from_iter(params.iter()), |row| Ok((row.get::<_, i64>(0).unwrap(), row.get::<_, Vec<u8>>(1).unwrap(), row.get::<_, String>(2).unwrap(), row.get::<_, DateTime<Utc>>(3).unwrap()))).unwrap();
             let bson_doc: bson::Document = bson::from_reader(row.1.as_slice()).unwrap();
-            let json_doc: serde_json::Value = bson::Bson::from(&bson_doc).into();
-            Ok(Record { id: row.0, data: json_doc, hash: row.2, last_modified: row.3 })
+            Ok(Record { id: row.0, data: bson_doc, hash: row.2, last_modified: row.3 })
         } else if self.config.should_hash_document == false && self.config.should_log_last_modified == true {
             let row = stmt.query_row(params_from_iter(params.iter()), |row| Ok((row.get::<_, i64>(0).unwrap(), row.get::<_, Vec<u8>>(1).unwrap(), row.get::<_, DateTime<Utc>>(2).unwrap()))).unwrap();
             let bson_doc: bson::Document = bson::from_reader(row.1.as_slice()).unwrap();
-            let json_doc: serde_json::Value = bson::Bson::from(&bson_doc).into();
-            Ok(Record { id: row.0, data: json_doc, hash: String::new(), last_modified: row.2 })
+            Ok(Record { id: row.0, data: bson_doc, hash: String::new(), last_modified: row.2 })
         } else {
             Err("Unable to find document")
         }
@@ -258,28 +256,27 @@ impl<'a> CollectionTrait for Collection<'a> {
         match stmt.query_row(params_from_iter(params.iter()), |row| {
             let id = row.get::<_, i64>(0).unwrap();
             let bson_doc: bson::Document = bson::from_reader(row.get::<_, Vec<u8>>(1).unwrap().as_slice()).unwrap();
-            let json_doc: serde_json::Value = bson::Bson::from(&bson_doc).into();
             match (self.config.should_hash_document, self.config.should_log_last_modified) {
                 (false, false) => Ok(Some(Record {
                     id: id,
-                    data: json_doc,
+                    data: bson_doc,
                     hash: String::new(),
                     last_modified: Utc.timestamp(0, 0),
                 })),
                 (true, false) => {
                     let hash = row.get::<_, String>(2).unwrap();
-                    Ok(Some(Record { id: id, data: json_doc, hash: hash, last_modified: Utc.timestamp(0, 0) }))
+                    Ok(Some(Record { id: id, data: bson_doc, hash: hash, last_modified: Utc.timestamp(0, 0) }))
                 }
                 (true, true) => {
                     let hash = row.get::<_, String>(2).unwrap();
                     let last_modified = row.get::<_, DateTime<Utc>>(3).unwrap();
-                    Ok(Some(Record { id: id, data: json_doc, hash: hash, last_modified: last_modified }))
+                    Ok(Some(Record { id: id, data: bson_doc, hash: hash, last_modified: last_modified }))
                 }
                 (false, true) => {
                     let last_modified = row.get::<_, DateTime<Utc>>(2).unwrap();
                     Ok(Some(Record {
                         id: id,
-                        data: json_doc,
+                        data: bson_doc,
                         hash: String::new(),
                         last_modified: last_modified,
                     }))
@@ -333,28 +330,27 @@ impl<'a> CollectionTrait for Collection<'a> {
         match stmt.query_row(&[bytes_ref], |row| {
             let id = row.get::<_, i64>(0).unwrap();
             let bson_doc: bson::Document = bson::from_reader(row.get::<_, Vec<u8>>(1).unwrap().as_slice()).unwrap();
-            let json_doc: serde_json::Value = bson::Bson::from(&bson_doc).into();
             match (self.config.should_hash_document, self.config.should_log_last_modified) {
                 (false, false) => Ok(Some(Record {
                     id: id,
-                    data: json_doc,
+                    data: bson_doc,
                     hash: String::new(),
                     last_modified: Utc.timestamp(0, 0),
                 })),
                 (true, false) => {
                     let hash = row.get::<_, String>(2).unwrap();
-                    Ok(Some(Record { id: id, data: json_doc, hash: hash, last_modified: Utc.timestamp(0, 0) }))
+                    Ok(Some(Record { id: id, data: bson_doc, hash: hash, last_modified: Utc.timestamp(0, 0) }))
                 }
                 (true, true) => {
                     let hash = row.get::<_, String>(2).unwrap();
                     let last_modified = row.get::<_, DateTime<Utc>>(3).unwrap();
-                    Ok(Some(Record { id: id, data: json_doc, hash: hash, last_modified: last_modified }))
+                    Ok(Some(Record { id: id, data: bson_doc, hash: hash, last_modified: last_modified }))
                 }
                 (false, true) => {
                     let last_modified = row.get::<_, DateTime<Utc>>(2).unwrap();
                     Ok(Some(Record {
                         id: id,
-                        data: json_doc,
+                        data: bson_doc,
                         hash: String::new(),
                         last_modified: last_modified,
                     }))
@@ -420,28 +416,27 @@ impl<'a> CollectionTrait for Collection<'a> {
         match stmt.query_row(params_from_iter(params.iter()), |row| {
             let id = row.get::<_, i64>(0).unwrap();
             let bson_doc: bson::Document = bson::from_reader(row.get::<_, Vec<u8>>(1).unwrap().as_slice()).unwrap();
-            let json_doc: serde_json::Value = bson::Bson::from(&bson_doc).into();
             match (self.config.should_hash_document, self.config.should_log_last_modified) {
                 (false, false) => Ok(Some(Record {
                     id: id,
-                    data: json_doc,
+                    data: bson_doc,
                     hash: String::new(),
                     last_modified: Utc.timestamp(0, 0),
                 })),
                 (true, false) => {
                     let hash = row.get::<_, String>(2).unwrap();
-                    Ok(Some(Record { id: id, data: json_doc, hash: hash, last_modified: Utc.timestamp(0, 0) }))
+                    Ok(Some(Record { id: id, data: bson_doc, hash: hash, last_modified: Utc.timestamp(0, 0) }))
                 }
                 (true, true) => {
                     let hash = row.get::<_, String>(2).unwrap();
                     let last_modified = row.get::<_, DateTime<Utc>>(3).unwrap();
-                    Ok(Some(Record { id: id, data: json_doc, hash: hash, last_modified: last_modified }))
+                    Ok(Some(Record { id: id, data: bson_doc, hash: hash, last_modified: last_modified }))
                 }
                 (false, true) => {
                     let last_modified = row.get::<_, DateTime<Utc>>(2).unwrap();
                     Ok(Some(Record {
                         id: id,
-                        data: json_doc,
+                        data: bson_doc,
                         hash: String::new(),
                         last_modified: last_modified,
                     }))
@@ -481,28 +476,27 @@ impl<'a> CollectionTrait for Collection<'a> {
             match stmt.query_row(params_from_iter(params.iter()), |row| {
                 let id = row.get::<_, i64>(0).unwrap();
                 let bson_doc: bson::Document = bson::from_reader(row.get::<_, Vec<u8>>(1).unwrap().as_slice()).unwrap();
-                let json_doc: serde_json::Value = bson::Bson::from(&bson_doc).into();
                 match (self.config.should_hash_document, self.config.should_log_last_modified) {
                     (false, false) => Ok(Some(Record {
                         id: id,
-                        data: json_doc,
+                        data: bson_doc,
                         hash: String::new(),
                         last_modified: Utc.timestamp(0, 0),
                     })),
                     (true, false) => {
                         let hash = row.get::<_, String>(2).unwrap();
-                        Ok(Some(Record { id: id, data: json_doc, hash: hash, last_modified: Utc.timestamp(0, 0) }))
+                        Ok(Some(Record { id: id, data: bson_doc, hash: hash, last_modified: Utc.timestamp(0, 0) }))
                     }
                     (true, true) => {
                         let hash = row.get::<_, String>(2).unwrap();
                         let last_modified = row.get::<_, DateTime<Utc>>(3).unwrap();
-                        Ok(Some(Record { id: id, data: json_doc, hash: hash, last_modified: last_modified }))
+                        Ok(Some(Record { id: id, data: bson_doc, hash: hash, last_modified: last_modified }))
                     }
                     (false, true) => {
                         let last_modified = row.get::<_, DateTime<Utc>>(2).unwrap();
                         Ok(Some(Record {
                             id: id,
-                            data: json_doc,
+                            data: bson_doc,
                             hash: String::new(),
                             last_modified: last_modified,
                         }))
@@ -535,28 +529,27 @@ impl<'a> CollectionTrait for Collection<'a> {
             match stmt.query_row(params_from_iter(params.iter()), |row| {
                 let id = row.get::<_, i64>(0).unwrap();
                 let bson_doc: bson::Document = bson::from_reader(row.get::<_, Vec<u8>>(1).unwrap().as_slice()).unwrap();
-                let json_doc: serde_json::Value = bson::Bson::from(&bson_doc).into();
                 match (self.config.should_hash_document, self.config.should_log_last_modified) {
                     (false, false) => Ok(Some(Record {
                         id: id,
-                        data: json_doc,
+                        data: bson_doc,
                         hash: String::new(),
                         last_modified: Utc.timestamp(0, 0),
                     })),
                     (true, false) => {
                         let hash = row.get::<_, String>(2).unwrap();
-                        Ok(Some(Record { id: id, data: json_doc, hash: hash, last_modified: Utc.timestamp(0, 0) }))
+                        Ok(Some(Record { id: id, data: bson_doc, hash: hash, last_modified: Utc.timestamp(0, 0) }))
                     }
                     (true, true) => {
                         let hash = row.get::<_, String>(2).unwrap();
                         let last_modified = row.get::<_, DateTime<Utc>>(3).unwrap();
-                        Ok(Some(Record { id: id, data: json_doc, hash: hash, last_modified: last_modified }))
+                        Ok(Some(Record { id: id, data: bson_doc, hash: hash, last_modified: last_modified }))
                     }
                     (false, true) => {
                         let last_modified = row.get::<_, DateTime<Utc>>(2).unwrap();
                         Ok(Some(Record {
                             id: id,
-                            data: json_doc,
+                            data: bson_doc,
                             hash: String::new(),
                             last_modified: last_modified,
                         }))

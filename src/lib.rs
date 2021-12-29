@@ -116,8 +116,8 @@ mod tests {
 
             let row = collection.find_one(bson::to_bson(&json!({ "kind": "apples" })).unwrap().as_document().unwrap(), 0).unwrap();
 
-            assert_eq!(row.data.as_object().unwrap().get("kind").unwrap().as_str().unwrap(), "apples");
-            assert_eq!(row.data.as_object().unwrap().get("qty").unwrap().as_i64().unwrap(), 5);
+            assert_eq!(row.data.get("kind").unwrap().as_str().unwrap(), "apples");
+            assert_eq!(row.data.get("qty").unwrap().as_i64().unwrap(), 5);
 
            
         }
