@@ -37,7 +37,7 @@ impl<'conn> CollectionTrait for TransactionCollection<'conn> {
     fn count_document(&mut self, query: &serde_json::Value, options: &Option<SearchOption>) -> std::result::Result<i64, &str>{
         Err("afd")
     }
-    fn create_index(&mut self, config: &serde_json::Value, is_unique: bool) -> std::result::Result<(), String>{
+    fn create_index(&mut self, config: &bson::Document, is_unique: bool) -> std::result::Result<(), String>{
         Err("afd".to_string())
     }
 

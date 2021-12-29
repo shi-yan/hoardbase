@@ -8,36 +8,42 @@ use serde_json::json;
 use serde_json::Value;
 use slugify::slugify;
 use std::cell::RefCell;
+use std::convert::From;
 use std::rc::Rc;
 use std::rc::Weak;
-use std::convert::From;
 
 use crate::base::*;
 use crate::query_translator::QueryTranslator;
 
 /// This function translate a json index descriptor into a SQL index descriptor
-fn translate_index_config(config: &serde_json::Value, scope: &str, fields: &mut Vec<(String, i8)>) -> std::result::Result<(), &'static str> {
-    if config.is_object() {
-        for (key, value) in config.as_object().unwrap().iter() {
-            if value.is_object() {
-                return translate_index_config(&value, &format!("{}{}.", scope, key), fields);
-            } else if value.is_number() {
-                let order = value.as_i64().unwrap();
-
-                if order != -1 && order != 1 {
+fn translate_index_config(config: &bson::Document, scope: &str, fields: &mut Vec<(String, i8)>) -> std::result::Result<(), &'static str> {
+    for (key, value) in config.iter() {
+        match value {
+            bson::Bson::Document(doc) => {
+                return translate_index_config(&doc, &format!("{}{}.", scope, key), fields);
+            }
+            bson::Bson::Int32(order) => {
+                if *order != -1 && *order != 1 {
                     return Err("Invalid order");
                 }
 
-                fields.push((format!("{}{}", scope, key), order as i8));
+                fields.push((format!("{}{}", scope, key), *order as i8));
                 return Ok(());
-            } else {
+            }
+            bson::Bson::Int64(order) => {
+                if *order != -1 && *order != 1 {
+                    return Err("Invalid order");
+                }
+
+                fields.push((format!("{}{}", scope, key), *order as i8));
+                return Ok(());
+            }
+            _ => {
                 return Err("Invalid index config");
             }
         }
-        Err("no members in index config")
-    } else {
-        Err("Index config must be an object")
     }
+    Err("no members in index config")
 }
 
 /// This struct represents a collection
@@ -53,69 +59,19 @@ pub struct Collection<'a> {
 }
 
 impl<'a> CollectionTrait for Collection<'a> {
-    fn find(&mut self, query: &bson::Bson, options: &Option<SearchOption>, f: &mut dyn FnMut(&Record) -> std::result::Result<(), &'static str>) -> std::result::Result<(), &str> {
+    fn find(&mut self, query: &serde_json::Value, options: &Option<SearchOption>, f: &mut dyn FnMut(&Record) -> std::result::Result<(), &'static str>) -> std::result::Result<(), &str> {
         match (self.config.should_hash_document, self.config.should_log_last_modified) {
             (true, true) => find_internal::<_, _, true, true>(self.db, &self.config, query, options, f),
             (true, false) => find_internal::<_, _, true, false>(self.db, &self.config, query, options, f),
             (false, false) => find_internal::<_, _, false, false>(self.db, &self.config, query, options, f),
             (false, true) => find_internal::<_, _, false, true>(self.db, &self.config, query, options, f),
         }
-
-        /* let db_internal = self.db;
-        let conn = db_internal;
-        let mut params = Vec::<rusqlite::types::Value>::new();
-        let where_str: String = QueryTranslator {}.query_document(&query, &mut params).unwrap();
-        let mut option_str = String::new();
-        if let Some(opt) = options {
-            option_str = format!("LIMIT {} OFFSET {}", opt.limit, opt.skip);
-        }
-        let mut stmt = conn.prepare_cached(&format!("SELECT * FROM [{}] {} {};", &self.table_name, if where_str.len() > 0 { format!("WHERE {}", &where_str) } else { String::from("") }, option_str)).unwrap();
-        let mut rows = stmt.query(params_from_iter(params.iter())).unwrap();
-        while let Ok(row_result) = rows.next() {
-            if let Some(row) = row_result {
-                let id = row.get::<_, i64>(0).unwrap();
-                let bson_doc: bson::Document = bson::from_reader(row.get::<_, Vec<u8>>(1).unwrap().as_slice()).unwrap();
-                let json_doc: serde_json::Value = bson::Bson::from(&bson_doc).into();
-                let record = match (self.config.should_hash_document, self.config.should_log_last_modified) {
-                    (false, false) => Record {
-                        id: id,
-                        data: json_doc,
-                        hash: String::new(),
-                        last_modified: Utc.timestamp(0, 0),
-                    },
-                    (true, false) => {
-                        let hash = row.get::<_, String>(2).unwrap();
-                        Record { id: id, data: json_doc, hash: hash, last_modified: Utc.timestamp(0, 0) }
-                    }
-                    (true, true) => {
-                        let hash = row.get::<_, String>(2).unwrap();
-                        let last_modified = row.get::<_, DateTime<Utc>>(3).unwrap();
-                        Record { id: id, data: json_doc, hash: hash, last_modified: last_modified }
-                    }
-                    (false, true) => {
-                        let last_modified = row.get::<_, DateTime<Utc>>(2).unwrap();
-                        Record {
-                            id: id,
-                            data: json_doc,
-                            hash: String::new(),
-                            last_modified: last_modified,
-                        }
-                    }
-                };
-                f(&record).unwrap();
-            } else {
-                break;
-            }
-        }
-        Ok(())*/
     }
-
 
     fn count_document(&mut self, query: &serde_json::Value, options: &Option<SearchOption>) -> std::result::Result<i64, &str> {
         //todo implement skip limit
         let mut params = Vec::<rusqlite::types::Value>::new();
         let where_str: String = QueryTranslator {}.query_document(&query, &mut params).unwrap();
-        //println!("where_str {}", &where_str);
         let mut option_str = String::new();
         if let Some(opt) = options {
             option_str = format!("LIMIT {} OFFSET {}", opt.limit, opt.skip);
@@ -127,11 +83,11 @@ impl<'a> CollectionTrait for Collection<'a> {
         Ok(count)
     }
 
-    fn create_index(&mut self, config: &serde_json::Value, is_unique: bool) -> std::result::Result<(), String> {
+    fn create_index(&mut self, config: &bson::Document, is_unique: bool) -> std::result::Result<(), String> {
         //todo implement type and size index
         let mut fields: Vec<(String, i8)> = Vec::new();
 
-        let result = translate_index_config(&config, "", &mut fields);
+        let result = translate_index_config(config, "", &mut fields);
 
         if let Err(e) = result {
             return Err(String::from(e));
@@ -168,7 +124,6 @@ impl<'a> CollectionTrait for Collection<'a> {
     fn delete_one(&mut self, query: &serde_json::Value) -> std::result::Result<usize, String> {
         let mut params = Vec::<rusqlite::types::Value>::new();
         let where_str: String = QueryTranslator {}.query_document(&query, &mut params).unwrap();
-        //println!("where_str {}", &where_str);
         let db_internal = self.db;
         let conn = db_internal;
         // an alternative solution is SQLITE_ENABLE_UPDATE_DELETE_LIMIT

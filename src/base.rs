@@ -105,7 +105,7 @@ pub trait CollectionTrait {
     fn get_table_name(&self) -> &str;
 
     fn count_document(&mut self, query: &serde_json::Value, options: &Option<SearchOption>) -> std::result::Result<i64, &str>;
-    fn create_index(&mut self, config: &serde_json::Value, is_unique: bool) -> std::result::Result<(), String>;
+    fn create_index(&mut self, config: &bson::Document, is_unique: bool) -> std::result::Result<(), String>;
 
     fn delete_one(&mut self, query: &serde_json::Value) -> std::result::Result<usize, String>;
     fn changes(&mut self) -> std::result::Result<i64, String>;
