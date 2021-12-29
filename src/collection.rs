@@ -10,6 +10,7 @@ use slugify::slugify;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::rc::Weak;
+use std::convert::From;
 
 use crate::base::*;
 use crate::query_translator::QueryTranslator;
@@ -52,7 +53,7 @@ pub struct Collection<'a> {
 }
 
 impl<'a> CollectionTrait for Collection<'a> {
-    fn find(&mut self, query: &serde_json::Value, options: &Option<SearchOption>, f: &mut dyn FnMut(&Record) -> std::result::Result<(), &'static str>) -> std::result::Result<(), &str> {
+    fn find(&mut self, query: &bson::Bson, options: &Option<SearchOption>, f: &mut dyn FnMut(&Record) -> std::result::Result<(), &'static str>) -> std::result::Result<(), &str> {
         match (self.config.should_hash_document, self.config.should_log_last_modified) {
             (true, true) => find_internal::<_, _, true, true>(self.db, &self.config, query, options, f),
             (true, false) => find_internal::<_, _, true, false>(self.db, &self.config, query, options, f),
@@ -108,6 +109,7 @@ impl<'a> CollectionTrait for Collection<'a> {
         }
         Ok(())*/
     }
+
 
     fn count_document(&mut self, query: &serde_json::Value, options: &Option<SearchOption>) -> std::result::Result<i64, &str> {
         //todo implement skip limit

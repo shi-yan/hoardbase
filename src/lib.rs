@@ -109,6 +109,8 @@ mod tests {
 
             assert_eq!(row.data.as_object().unwrap().get("kind").unwrap().as_str().unwrap(), "apples");
             assert_eq!(row.data.as_object().unwrap().get("qty").unwrap().as_i64().unwrap(), 5);
+
+            collection.count2_document(&json!({ "kind": "apples" })).unwrap();
         }
     
         std::fs::remove_file("test_find.db").unwrap();
