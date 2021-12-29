@@ -2,9 +2,10 @@ use hoardbase::base::CollectionTrait;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyDateTime, PyDict, PyInt, PyList, PyString, PyTuple};
-use serde_json::Map;
 use std::cell::RefCell;
 use std::sync::{Arc, Mutex};
+use bson::*;
+
 #[pyclass]
 struct Database {
     db: Arc<Mutex<hoardbase::database::Database>>,
@@ -16,27 +17,27 @@ struct Collection {
     db: Arc<Mutex<hoardbase::database::Database>>,
 }
 
-fn pydict2serde_json_map(dict: &PyDict, py: pyo3::prelude::Python<'_>) -> serde_json::Map<String, serde_json::Value> {
-    let mut map = serde_json::Map::new();
+fn pydict2bson_document(dict: &PyDict, py: pyo3::prelude::Python<'_>) -> bson::Document {
+    let mut map = bson::Document::new();
 
     for (key, value) in dict.iter() {
         let key = key.to_string();
         if value.is_instance::<pyo3::types::PyString>().unwrap() {
             let value_str = value.downcast::<pyo3::types::PyString>().unwrap().to_string();
-            map.insert(key, serde_json::Value::String(value_str));
+            map.insert(key, bson::Bson::String(value_str));
         } else if value.is_instance::<pyo3::types::PyList>().unwrap() || value.is_instance::<pyo3::types::PySet>().unwrap() {
         } else if value.is_instance::<pyo3::types::PyFloat>().unwrap() {
             let val = value.downcast::<pyo3::types::PyFloat>().unwrap();
-            map.insert(key, serde_json::Value::Number(serde_json::Number::from_f64(val.value()).unwrap()));
+            map.insert(key, bson::Bson::Double(val.value()));
         } else if value.is_instance::<pyo3::types::PyInt>().unwrap() {
             let val = value.downcast::<pyo3::types::PyInt>().unwrap().to_object(py).extract::<i64>(py).unwrap();
-            map.insert(key, serde_json::Value::Number(serde_json::Number::from(val)));
+            map.insert(key, bson::Bson::Int64(val));
         } else if value.is_instance::<pyo3::types::PyBool>().unwrap() {
             let val = value.downcast::<pyo3::types::PyBool>().unwrap();
-            map.insert(key, serde_json::Value::Bool(val.is_true()));
+            map.insert(key, bson::Bson::Boolean(val.is_true()));
         } else if value.is_instance::<pyo3::types::PyDict>().unwrap() {
-            let nested = pydict2serde_json_map(&value.downcast::<PyDict>().unwrap(), py);
-            map.insert(key, serde_json::Value::Object(nested));
+            let nested = pydict2bson_document(&value.downcast::<PyDict>().unwrap(), py);
+            map.insert(key, bson::Bson::Document(nested));
         } else {
             // return Err(0);
         }
@@ -122,9 +123,9 @@ impl Record {
 #[pymethods]
 impl Collection {
     pub fn insert_one(&self, py: pyo3::prelude::Python<'_>, document: &PyDict) -> PyResult<Record> {
-        let val = pydict2serde_json_map(document, py);
+        let val = pydict2bson_document(document, py);
 
-        let r = self.db.lock().unwrap().collection(&self.name).unwrap().insert_one(&serde_json::Value::Object(val)).unwrap();
+        let r = self.db.lock().unwrap().collection(&self.name).unwrap().insert_one(&val).unwrap();
 
         Ok(Record { record: r.unwrap() })
     }
