@@ -20,8 +20,8 @@
 //!     ccol.hash_document(true);
 //!     ccol.log_last_modified(true);
 //!     let mut collection = db.create_collection("test_collect", &ccol).unwrap();
-//!     collection.create_index(&json!({"age": 1}), false).unwrap();
-//!     collection.insert_one(&json!({ "kind": "apples", "qty": 5 })).unwrap();
+//!     collection.create_index(bson::to_bson(&json!({"age": 1})).unwrap().as_document().unwrap(), false).unwrap();
+//!     collection.insert_one( bson::to_bson(&json!({ "kind": "apples", "qty": 5 })).unwrap().as_document().unwrap()).unwrap();
 //! }
 //! ```
 //! 
@@ -32,7 +32,25 @@
 //! col = db.create_collection('test')
 //! r = col.insert_one({'name': 'test'})
 //! ```
+//! 
+//! Nodejs:
+//! ```javascript
+//! const Database = require('hoardbase')
+//! let db = new Database(path)
+//! let col = db.createCollection("test")
+//! let r = col.insertOne({ data: "test", age: 23, test_arr: [1, 2, 3], test_obj: { a: 1, b: 2 } })
+//! ```
+//! 
 //! ## Unsupported Mongodb Features
+//! 
+//! The following mongodb functions are not implemented, because I couldn't find a good way to return the modified document after an update with sqlite in a single SQL statement.
+//! * find_one_and_replace
+//! * find_one_and_update
+//! * find_and_modify
+//! 
+//! Aggregation is also not implemented, it is not a feature I use very much. I will look into it later.
+//! 
+//! Transaction implementation is also different from mongodb. Hoardbase's transaction can't return records. It is mainly used for creating related documents.
 //! 
 //! ## Internals
 //! The key mechanism for storing and querying json data using sqlite is serializing json documents into the blob type. Currently [`bson`] is used 
@@ -89,17 +107,19 @@ mod tests {
             ccol.log_last_modified(true);
             
             let mut collection = db.create_collection("test_collect", &ccol).unwrap();
-            collection.create_index(&json!({"age": 1}), false).unwrap();
+            collection.create_index( bson::to_bson(&json!({"age": 1})).unwrap().as_document().unwrap(), false).unwrap();
 
-            collection.insert_one(&json!({ "kind": "apples", "qty": 5 })).unwrap();
-            collection.insert_one(&json!({ "kind": "bananas", "qty": 7 })).unwrap();
-            collection.insert_one(&json!({ "kind": "oranges", "qty": { "in stock": 8, "ordered": 12 } })).unwrap();
-            collection.insert_one(&json!({ "kind": "avocados", "qty": "fourteen" })).unwrap();
+            collection.insert_one(bson::to_bson(&json!({ "kind": "apples", "qty": 5 })).unwrap().as_document().unwrap()).unwrap();
+            collection.insert_one(bson::to_bson(&json!({ "kind": "bananas", "qty": 7 })).unwrap().as_document().unwrap()).unwrap();
+            collection.insert_one(bson::to_bson(&json!({ "kind": "oranges", "qty": { "in stock": 8, "ordered": 12 } })).unwrap().as_document().unwrap()).unwrap();
+            collection.insert_one(bson::to_bson(&json!({ "kind": "avocados", "qty": "fourteen" })).unwrap().as_document().unwrap()).unwrap();
 
-            let row = collection.find_one(&json!({ "kind": "apples" }), 0).unwrap();
+            let row = collection.find_one(bson::to_bson(&json!({ "kind": "apples" })).unwrap().as_document().unwrap(), 0).unwrap();
 
-            assert_eq!(row.data.as_object().unwrap().get("kind").unwrap().as_str().unwrap(), "apples");
-            assert_eq!(row.data.as_object().unwrap().get("qty").unwrap().as_i64().unwrap(), 5);
+            assert_eq!(row.data.get("kind").unwrap().as_str().unwrap(), "apples");
+            assert_eq!(row.data.get("qty").unwrap().as_i64().unwrap(), 5);
+
+           
         }
     
         std::fs::remove_file("test_find.db").unwrap();

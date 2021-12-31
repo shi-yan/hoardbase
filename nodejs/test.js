@@ -9,7 +9,7 @@ describe('Hoardbase', () => {
         if (fs.existsSync(path)) {
             fs.unlinkSync(path)
         }
-        db = new Database("test.db")
+        db = new Database(path)
     });
     afterAll(() => {
         if (fs.existsSync(path)) {
