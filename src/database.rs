@@ -3,7 +3,6 @@ use crate::collection::Collection;
 use crate::transaction::TransactionCollection;
 use bson::Bson;
 use chrono::prelude::*;
-use sha1::{Digest, Sha1};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::error::Error;
@@ -390,16 +389,19 @@ impl Database {
                 }
             })
             .unwrap();
-
+        
+        // blake3 is chosen as the hash function because it appears to be faster than other choices.
+        // however, this is not verified by the author.
+        // https://crates.io/crates/blake3
         self.internal
-            .create_scalar_function("sha1", 1, rusqlite::functions::FunctionFlags::SQLITE_UTF8 | rusqlite::functions::FunctionFlags::SQLITE_DETERMINISTIC, move |ctx| {
+            .create_scalar_function("blake3", 1, rusqlite::functions::FunctionFlags::SQLITE_UTF8 | rusqlite::functions::FunctionFlags::SQLITE_DETERMINISTIC, move |ctx| {
                 assert_eq!(ctx.len(), 1, "called with unexpected number of arguments");
 
                 let blob = ctx.get_raw(0).as_blob().unwrap();
-                let mut hasher = Sha1::new();
+                let mut hasher = blake3::Hasher::new();
                 hasher.update(blob);
                 let result = hasher.finalize();
-                let hex_string = hex::encode(result.as_slice());
+                let hex_string = hex::encode(result.as_bytes());
                 Ok(Some(hex_string))
             })
             .unwrap();
@@ -556,7 +558,7 @@ impl Database {
                           {}
                           )",
                         collection_name,
-                        if config.should_hash_document { ", _hash NCHAR(40) GENERATED ALWAYS AS (sha1(raw)) STORED" } else { "" },
+                        if config.should_hash_document { ", _hash NCHAR(40) GENERATED ALWAYS AS (blake3(raw)) STORED" } else { "" },
                         if config.should_log_last_modified { ", _last_modified DATETIME" } else { "" },
                     ),
                     [],
