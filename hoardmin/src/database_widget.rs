@@ -15,13 +15,33 @@ use cursive_tabs::TabPanel;
 // Modules --------------------------------------------------------------------
 use cursive_table_view::{TableView, TableViewItem};
 use cursive_tree_view::{Placement, TreeView};
-use crate::collection_list::CollectionListView;
+
+use std::collections::HashMap;
+use std::fmt::Display;
+
+#[derive(Debug)]
+struct Index {
+    name: String,
+    is_unique: bool,
+    id: usize
+}
+
+impl Display for Index {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.name)
+    }
+}
+
+struct Collection {
+    name: String,
+    indices: HashMap<usize, Index>,
+    id: usize
+}
 
 pub struct DatabaseWidget {
     path: String,
     db: hoardbase::database::Database,
-    siv: cursive::CursiveRunnable,
-    collection_tree_view: CollectionListView,
+    collections: Vec<Collection>,
 }
 
 impl DatabaseWidget {
@@ -31,17 +51,58 @@ impl DatabaseWidget {
         config.profile(false);
     
         let mut db = Database::open(&config).unwrap();
-        let mut siv = cursive::default();
-        let mut collection_tree_view = CollectionListView::new();
 
-        let collections = db.list_collections();
+        let mut db_ui = DatabaseWidget {
+            path: path.to_string(),
+            db: db,
+            collections: Vec::new(),
+        };
+
+        let collections = db_ui.db.list_collections();
 
         for collection in collections {
-            collection_tree_view.add_collection(&collection.0, &Vec::new());
-        }
-        let mut h_split = LinearLayout::new(Orientation::Horizontal);
+            let mut col = Collection {
+                name: collection.0,
+                indices: HashMap::new(),
+                id: 0
+            };
 
-        let mut left_panel = ResizedView::with_full_height(Panel::new(collection_tree_view.tree_view .with_name("tree").scrollable()).title("Collection"));
+            /*for (index_name, is_unique) in indices {
+                let mut index = Index {
+                    name: index_name.clone(),
+                    is_unique: *is_unique,
+                    id: 0
+                };
+                
+                col.indices.insert(index_id, index);
+            }*/
+            db_ui.collections.push(col);
+            
+        }
+
+
+
+        return db_ui;
+
+
+
+
+
+
+    
+    }
+
+    pub fn run(&mut self) {
+        let mut siv = cursive::default();
+
+        let mut h_split = LinearLayout::new(Orientation::Horizontal);
+        let mut tree_view = TreeView::new();
+        for i in 0..self.collections.len() {
+            let id = tree_view.insert_item( self.collections[i].name.clone(), Placement::LastChild, 0).unwrap();
+            self.collections[i].id = id;
+        }
+
+        let mut left_panel = ResizedView::with_full_height(Panel::new(tree_view.with_name("collections_view").scrollable()).title("Collection"));
         left_panel.set_width(SizeConstraint::AtLeast(28));
         h_split.add_child(left_panel);
         let mut main_panel = LinearLayout::new(Orientation::Vertical);
@@ -50,17 +111,25 @@ impl DatabaseWidget {
     
         siv.add_fullscreen_layer(main_panel);
 
-        return DatabaseWidget {
-            path: path.to_string(),
-            db: db,
-            siv: siv,
-            collection_tree_view: collection_tree_view,
-        };
-     
-    }
+        let collections = &self.collections;
 
-    pub fn run(&mut self) {
+        tree_view.set_on_submit(move |siv: &mut Cursive, row| {
+            //let value = siv.call_on_name("collections_view", move |tree: &mut TreeView<String>| tree.borrow_item(row).unwrap().to_string());
+    
+            /*siv.add_layer(Dialog::around(TextView::new(value.unwrap())).title("Item submitted").button("Close", |s| {
+                s.pop_layer();
+            }));
+    
+            set_status(siv, row, "Submitted");*/
 
-        self.siv.run();
+            for i in 0..collections.len() {
+                if collections[i].id == row {
+                    println!("select collection {}", collections[i].name);
+                }
+            }
+        });
+
+
+        siv.run();
     }
 }

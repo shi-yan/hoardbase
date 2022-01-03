@@ -11,8 +11,7 @@ use clap::{App, Arg, SubCommand};
 
 use hoardbase::base::CollectionTrait;
 
-mod collection_list;
-mod database;
+mod database_widget;
 use crate::database_widget::DatabaseWidget;
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
 enum BasicColumn {
@@ -66,7 +65,7 @@ fn main() {
     println!("{:?}", env!("CARGO_PKG_VERSION"));
     println!("{:?}", env!("GIT_HASH"));
 
-    let mut db_ui  = database::DatabaseWidget::new("test.db");
+    let mut db_ui  = database_widget::DatabaseWidget::new("test.db");
 
     db_ui.run();
 
