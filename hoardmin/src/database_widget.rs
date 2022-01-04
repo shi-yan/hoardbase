@@ -19,29 +19,48 @@ use cursive_tree_view::{Placement, TreeView};
 use std::collections::HashMap;
 use std::fmt::Display;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
+struct Collection {
+    id: usize,
+    name: String
+}
+
+#[derive(Debug,Clone)]
 struct Index {
+    id: usize,
     name: String,
     is_unique: bool,
-    id: usize
+    collection:String
 }
 
-impl Display for Index {
+#[derive(Debug, Clone)]
+enum TreeItemPayload {
+    Collection(Collection),
+    Index(Index)
+}
+
+#[derive(Debug, Clone)]
+struct TreeItem {
+    payload: TreeItemPayload
+}
+
+// todo: maybe just remove TreeItem and use TreeItemPayload directly
+impl Display for TreeItem {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}", self.name)
+        match &self.payload {
+            TreeItemPayload::Collection(collection) => {
+                write!(f, "{}", collection.name)
+            }
+            TreeItemPayload::Index(index) => {
+                write!(f, "{}", index.name)
+            }
+        }
     }
-}
-
-struct Collection {
-    name: String,
-    indices: HashMap<usize, Index>,
-    id: usize
 }
 
 pub struct DatabaseWidget {
     path: String,
     db: hoardbase::database::Database,
-    collections: Vec<Collection>,
 }
 
 impl DatabaseWidget {
@@ -54,42 +73,10 @@ impl DatabaseWidget {
 
         let mut db_ui = DatabaseWidget {
             path: path.to_string(),
-            db: db,
-            collections: Vec::new(),
+            db: db
         };
 
-        let collections = db_ui.db.list_collections();
-
-        for collection in collections {
-            let mut col = Collection {
-                name: collection.0,
-                indices: HashMap::new(),
-                id: 0
-            };
-
-            /*for (index_name, is_unique) in indices {
-                let mut index = Index {
-                    name: index_name.clone(),
-                    is_unique: *is_unique,
-                    id: 0
-                };
-                
-                col.indices.insert(index_id, index);
-            }*/
-            db_ui.collections.push(col);
-            
-        }
-
-
-
-        return db_ui;
-
-
-
-
-
-
-    
+        return db_ui;    
     }
 
     pub fn run(&mut self) {
@@ -97,10 +84,29 @@ impl DatabaseWidget {
 
         let mut h_split = LinearLayout::new(Orientation::Horizontal);
         let mut tree_view = TreeView::new();
-        for i in 0..self.collections.len() {
-            let id = tree_view.insert_item( self.collections[i].name.clone(), Placement::LastChild, 0).unwrap();
-            self.collections[i].id = id;
+
+        let collections = self.db.list_collections();
+
+        for collection in collections {
+            let id = tree_view.insert_item( TreeItem{payload: TreeItemPayload::Collection(Collection{id:0, name: collection.0})} , Placement::LastChild, 0).unwrap();
         }
+
+
+
+        tree_view.set_on_submit(|siv: &mut Cursive, row| {
+            let value = siv.call_on_name("collections_view", move |tree: &mut TreeView<TreeItem>| (*tree.borrow_item(row).unwrap()).clone()).unwrap();
+            
+
+            println!("selected collection: {}", value);
+
+            /*siv.add_layer(Dialog::around(TextView::new(value.unwrap())).title("Item submitted").button("Close", |s| {
+                s.pop_layer();
+            }));
+    
+            set_status(siv, row, "Submitted");*/
+
+            
+        });
 
         let mut left_panel = ResizedView::with_full_height(Panel::new(tree_view.with_name("collections_view").scrollable()).title("Collection"));
         left_panel.set_width(SizeConstraint::AtLeast(28));
@@ -110,26 +116,6 @@ impl DatabaseWidget {
         main_panel.add_child(ResizedView::with_fixed_height(8, Panel::new(DebugView::new().scrollable()).title("Log")));
     
         siv.add_fullscreen_layer(main_panel);
-
-        let collections = &self.collections;
-
-        tree_view.set_on_submit(move |siv: &mut Cursive, row| {
-            //let value = siv.call_on_name("collections_view", move |tree: &mut TreeView<String>| tree.borrow_item(row).unwrap().to_string());
-    
-            /*siv.add_layer(Dialog::around(TextView::new(value.unwrap())).title("Item submitted").button("Close", |s| {
-                s.pop_layer();
-            }));
-    
-            set_status(siv, row, "Submitted");*/
-
-            for i in 0..collections.len() {
-                if collections[i].id == row {
-                    println!("select collection {}", collections[i].name);
-                }
-            }
-        });
-
-
         siv.run();
     }
 }

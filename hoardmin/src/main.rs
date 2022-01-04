@@ -63,7 +63,7 @@ fn main() {
 
     println!("{:?}", matches.args.get("file").unwrap().vals[0]);
     println!("{:?}", env!("CARGO_PKG_VERSION"));
-    println!("{:?}", env!("GIT_HASH"));
+    //println!("{:?}", env!("GIT_HASH"));
 
     let mut db_ui  = database_widget::DatabaseWidget::new("test.db");
 
