@@ -74,6 +74,7 @@ impl<'a> CollectionTrait for Collection<'a> {
     }
 
     fn find_one(&mut self, query: &bson::Document, skip: i64) -> std::result::Result<Record, &str> {
+
         match (self.config.should_hash_document, self.config.should_log_last_modified) {
             (true, true) => find_one_internal::<_, _, true, true>(self.db, &self.config, query, skip),
             (true, false) => find_one_internal::<_, _, true, false>(self.db, &self.config, query, skip),

@@ -140,6 +140,7 @@ pub trait CollectionTrait {
     fn replace_one(&mut self, query: &bson::Document, replacement: &bson::Document, skip: i64) -> std::result::Result<Option<Record>, String>;
 
     fn update_one(&mut self, query: &bson::Document, update: &bson::Document, skip: i64, upsert: bool) -> std::result::Result<Option<Record>, String>;
+
     fn update_many(&mut self, query: &bson::Document, update: &bson::Document, limit: i64, skip: i64, upsert: bool) -> Result<i64, String>;
 }
 
@@ -196,6 +197,7 @@ pub fn find_internal<A, C: Adapter<A>, const H: bool, const L: bool>(conn: &C, c
         if let Some(row) = row_result {
             let id = row.get::<_, i64>(0).unwrap();
             let bson_doc: bson::Document = bson::from_reader(row.get::<_, Vec<u8>>(1).unwrap().as_slice()).unwrap();
+
             let record = match (H, L) {
                 (false, false) => Record {
                     id: id,
