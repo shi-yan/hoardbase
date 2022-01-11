@@ -10,10 +10,6 @@ repository = "https://github.com/shi-yan/hoardbase"
 name = "hoardmin"
 path = "./src/main.rs"
 
-[[bin]]
-name = "test"
-path = "./src/test.rs"
-
 [dependencies]
 hoardbase = { path = "../" }
 serde_json = "1.0.72"

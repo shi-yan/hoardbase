@@ -4,28 +4,15 @@ extern crate cursive_tree_view;
 // Crate Dependencies ---------------------------------------------------------
 use cursive;
 
-// External Dependencies ------------------------------------------------------
-use cursive::align::HAlign;
-use cursive::direction::Orientation;
-use cursive::traits::*;
-use cursive::view::SizeConstraint;
-use cursive::views::Button;
-use cursive::views::DebugView;
-use cursive::views::EditView;
-use cursive::views::NamedView;
-use cursive::views::TextArea;
-use cursive::views::{Dialog, DummyView, LinearLayout, Panel, ResizedView, TextView};
-use cursive::Cursive;
-use cursive_tabs::TabPanel;
-// Modules --------------------------------------------------------------------
-use cursive_table_view::{TableView, TableViewItem};
-use cursive_tree_view::{Placement, TreeView};
+
 use std::cmp::Ordering;
 
 use clap::{App, Arg, SubCommand};
 
 use hoardbase::base::CollectionTrait;
 
+mod database_widget;
+use crate::database_widget::DatabaseWidget;
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
 enum BasicColumn {
     Name,
@@ -42,7 +29,7 @@ impl BasicColumn {
         }
     }
 }
-
+/*
 #[derive(Clone, Debug)]
 struct Foo {
     name: String,
@@ -70,15 +57,19 @@ impl TableViewItem<BasicColumn> for Foo {
         }
     }
 }
-
+*/
 fn main() {
     let matches = App::new("Hoardmin").version("1.0").author("Shi Yan.").about("a database").arg(Arg::with_name("file").required(true).takes_value(true)).get_matches();
 
     println!("{:?}", matches.args.get("file").unwrap().vals[0]);
     println!("{:?}", env!("CARGO_PKG_VERSION"));
-    println!("{:?}", env!("GIT_HASH"));
+    //println!("{:?}", env!("GIT_HASH"));
 
-    let mut siv = cursive::default();
+    let mut db_ui  = database_widget::DatabaseWidget::new("test.db");
+
+    db_ui.run();
+
+    /*let mut siv = cursive::default();
 
     // Tree -------------------------------------------------------------------
     let mut tree = TreeView::new();
@@ -235,5 +226,5 @@ fn main() {
 
     fn edit_submitted(s: &mut Cursive, name: &str) {}
 
-    siv.run();
+    siv.run();*/
 }
