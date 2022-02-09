@@ -202,29 +202,104 @@ impl Record {
 impl Collection {
     pub fn insert_one(&self, py: pyo3::prelude::Python<'_>, document: &PyDict) -> PyResult<Record> {
         let val = pydict2bson_document(document, py);
-
         let r = self.db.lock().unwrap().collection(&self.name).unwrap().insert_one(&val).unwrap();
-
         Ok(Record { record: r.unwrap() })
     }
 
     pub fn find(&mut self,  py: pyo3::prelude::Python<'_>, query: &PyDict, f: &PyFunction, options: Option<&PyDict>) -> PyResult<()> {
-        println!("called find");
         let mut query_bson = pydict2bson_document(query, py);
         self.db.lock().unwrap().collection(&self.name).unwrap().find(&query_bson, &None, process_record!( record => {
-            //let args = (1, 2);
-            
-            println!("rust print {:?}", record);
             let v = Record {record : record.clone()};
-            let tuple = (v, 1);
-            f.call1( tuple ).unwrap();  
+            let args = (v,);
+            f.call1( args ).unwrap();  
             Ok(())
         }) ).unwrap();
-        
-        
         Ok(())
     }
 
+    fn count_documents(&mut self, py: pyo3::prelude::Python<'_>, query: &PyDict, options: Option<&PyDict>) -> PyResult<i64> {
+        let c = self.db.lock().unwrap().collection(&self.name).unwrap().count_documents(&pydict2bson_document(query, py), &None).unwrap();
+        Ok(c)
+    }
+
+    fn create_index(&mut self, py: pyo3::prelude::Python<'_>, config: &PyDict, is_unique: bool) -> PyResult<()> {
+        self.db.lock().unwrap().collection(&self.name).unwrap().create_index(&pydict2bson_document(config, py), is_unique).unwrap();
+        Ok(())
+    }
+
+    fn get_name(&mut self, py: pyo3::prelude::Python<'_>) -> PyResult<String> {
+        Ok(self.db.lock().unwrap().collection(&self.name).unwrap().get_name().to_string())
+    }
+
+    fn get_table_name(&mut self, py: pyo3::prelude::Python<'_>) -> PyResult<String> {
+        Ok(self.db.lock().unwrap().collection(&self.name).unwrap().get_table_name().to_string())
+    }
+
+    fn delete_one(&mut self, py: pyo3::prelude::Python<'_>, query: &PyDict) -> PyResult<usize> {
+        let c = self.db.lock().unwrap().collection(&self.name).unwrap().delete_one(&pydict2bson_document(query, py)).unwrap();
+        Ok(c)
+    }
+
+    fn changes(&mut self, py: pyo3::prelude::Python<'_>) -> PyResult<i64> {
+        let c = self.db.lock().unwrap().collection(&self.name).unwrap().changes().unwrap();
+        Ok(c)
+    }
+
+    fn delete_many(&mut self,py: pyo3::prelude::Python<'_>, query: &PyDict) -> PyResult<usize> {
+        let c = self.db.lock().unwrap().collection(&self.name).unwrap().delete_many(&pydict2bson_document(query, py)).unwrap();
+        Ok(c)
+    }
+
+    fn distinct(&mut self,py: pyo3::prelude::Python<'_>, field: &str, query: Option<&PyDict>, options: Option<&PyDict>) -> PyResult<i64> {
+        let c = self.db.lock().unwrap().collection(&self.name).unwrap().distinct(&field, &Some(pydict2bson_document(query.unwrap(), py)), &None).unwrap();
+        Ok(c)
+    }
+
+    fn drop_index(&mut self,py: pyo3::prelude::Python<'_>,  index_name: &str) -> PyResult<()> {
+        self.db.lock().unwrap().collection(&self.name).unwrap().drop_index(&index_name).unwrap();
+        Ok(())
+    }
+
+    fn find_one(&mut self,py: pyo3::prelude::Python<'_>, query: &PyDict, skip: i64) -> PyResult<Record> {
+        let r = self.db.lock().unwrap().collection(&self.name).unwrap().find_one(&pydict2bson_document(query, py), skip).unwrap();
+        Ok(Record { record: r})
+    }
+
+    fn find_one_and_delete(&mut self,py: pyo3::prelude::Python<'_>, query: &PyDict) -> PyResult<Option<Record>> {
+        if let Ok(r) = self.db.lock().unwrap().collection(&self.name).unwrap().find_one_and_delete(&pydict2bson_document(query, py)) {
+            if let Some(rr) = r {
+                Ok(Some(Record { record: rr}))
+            }
+            else {
+                Ok(None)
+            }
+            
+        } else {
+            Ok(None)
+        }
+    }
+/*
+    fn get_indexes(&mut self) -> PyResult<Vec<Index>> {
+        let indexes = self.db.lock().unwrap().collection(&self.name).unwrap().get_indexes().unwrap();
+        Ok(indexes)
+    }
+*/
+/*    fn insert_many(&mut self, documents: &Vec<bson::Document>) -> std::result::Result<(), String> {
+    }
+
+    fn reindex(&mut self) -> std::result::Result<(), String> {
+    }
+
+    fn replace_one(&mut self, query: &bson::Document, replacement: &bson::Document, skip: i64) -> std::result::Result<Option<Record>, String> {
+    }
+
+    fn update_one(&mut self, query: &bson::Document, update: &bson::Document, skip: i64, upsert: bool) -> std::result::Result<Option<Record>, String> {
+    }
+
+    fn update_many(&mut self, query: &bson::Document, update: &bson::Document, limit: i64, skip: i64, upsert: bool) -> Result<i64, String> {
+    }
+
+    */
 }
 
 /// A Python module implemented in Rust. The name of this function must match

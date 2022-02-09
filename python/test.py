@@ -21,7 +21,7 @@ class TestHoardbase(unittest.TestCase):
         print(r.id, r.hash, r.last_modified)
         self.assertEqual(r.id, 1)
         results = []
-        def process(r, b):
+        def process(r):
             print("called in py:", r)
             results.append(r)
             print(r.id, r.hash, r.last_modified, r.data)
