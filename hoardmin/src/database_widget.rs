@@ -96,8 +96,20 @@ impl DatabaseWidget {
         tree_view.set_on_submit(|siv: &mut Cursive, row| {
             let value = siv.call_on_name("collections_view", move |tree: &mut TreeView<TreeItem>| (*tree.borrow_item(row).unwrap()).clone()).unwrap();
             
+            siv.call_on_name("tab_panel", move |panel: &mut TabPanel | {
+                let tabname = match value.payload {
+                    TreeItemPayload::Collection(collection) => {
+                        format!("{}", collection.name)
+                    }
+                    TreeItemPayload::Index(index) => {
+                        format!("{}", index.name)
+                    }
+                };
+                
+                panel.add_tab(TextView::new("Our first view!").with_name(tabname));
+            }).unwrap();
 
-            println!("selected collection: {}", value);
+            //println!("selected collection: {}", value);
 
             /*siv.add_layer(Dialog::around(TextView::new(value.unwrap())).title("Item submitted").button("Close", |s| {
                 s.pop_layer();
@@ -111,6 +123,10 @@ impl DatabaseWidget {
         let mut left_panel = ResizedView::with_full_height(Panel::new(tree_view.with_name("collections_view").scrollable()).title("Collection"));
         left_panel.set_width(SizeConstraint::AtLeast(28));
         h_split.add_child(left_panel);
+        let mut panel = TabPanel::new().with_name("tab_panel");
+        let mut right_panel = ResizedView::with_full_height(panel);
+        right_panel.set_width(SizeConstraint::Full);
+        h_split.add_child(right_panel);
         let mut main_panel = LinearLayout::new(Orientation::Vertical);
         main_panel.add_child(h_split);
         main_panel.add_child(ResizedView::with_fixed_height(8, Panel::new(DebugView::new().scrollable()).title("Log")));

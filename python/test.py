@@ -20,6 +20,12 @@ class TestHoardbase(unittest.TestCase):
         r = col.insert_one({'name': 'test'})
         print(r.id, r.hash, r.last_modified)
         self.assertEqual(r.id, 1)
+        def process(r, b):
+            print("called in py:", r)
+            print(r.id, r.hash, r.last_modified)
+        self.db.collection('test').find({'name': 'test'}, process)
+
+        
 
 if __name__ == '__main__':
     unittest.main()

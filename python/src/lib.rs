@@ -1,10 +1,11 @@
 use hoardbase::base::CollectionTrait;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3::types::{PyBool, PyDateTime, PyDict, PyInt, PyList, PyString, PyTuple};
+use pyo3::types::{PyBool, PyDateTime, PyDict, PyInt, PyList, PyString, PyTuple, PyFunction};
 use std::cell::RefCell;
 use std::sync::{Arc, Mutex};
 use bson::*;
+use hoardbase::process_record;
 
 #[pyclass]
 struct Database {
@@ -90,6 +91,14 @@ impl Database {
             Err(e) => Err(PyValueError::new_err(format!("{}", e))),
         }
     }
+
+    pub fn collection(&mut self, collection_name: &str) -> PyResult<Collection> {
+        println!("python find {}", collection_name);
+        match self.db.lock().unwrap().collection(collection_name) {
+            Ok(collection) => Ok(Collection { name: collection_name.to_string(), db: self.db.clone() }),
+            Err(e) => Err(PyValueError::new_err(format!("{}", e))),
+        }
+    }
 }
 
 #[pyclass]
@@ -129,6 +138,24 @@ impl Collection {
 
         Ok(Record { record: r.unwrap() })
     }
+
+    pub fn find(&mut self,  py: pyo3::prelude::Python<'_>, query: &PyDict, f: &PyFunction, options: Option<&PyDict>) -> PyResult<()> {
+        println!("called find");
+        let mut query_bson = pydict2bson_document(query, py);
+        self.db.lock().unwrap().collection(&self.name).unwrap().find(&query_bson, &None, process_record!( record => {
+            //let args = (1, 2);
+            
+            println!("rust print {:?}", record);
+            let v = Record {record : record.clone()};
+            let tuple = (v, 1);
+            f.call1( tuple ).unwrap();  
+            Ok(())
+        }) );
+        
+        
+        Ok(())
+    }
+
 }
 
 /// A Python module implemented in Rust. The name of this function must match
