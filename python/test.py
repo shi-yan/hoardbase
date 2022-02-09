@@ -20,10 +20,13 @@ class TestHoardbase(unittest.TestCase):
         r = col.insert_one({'name': 'test'})
         print(r.id, r.hash, r.last_modified)
         self.assertEqual(r.id, 1)
+        results = []
         def process(r, b):
             print("called in py:", r)
-            print(r.id, r.hash, r.last_modified)
+            results.append(r)
+            print(r.id, r.hash, r.last_modified, r.data)
         self.db.collection('test').find({'name': 'test'}, process)
+        print(results)
 
         
 

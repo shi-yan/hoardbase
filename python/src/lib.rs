@@ -6,6 +6,7 @@ use std::cell::RefCell;
 use std::sync::{Arc, Mutex};
 use bson::*;
 use hoardbase::process_record;
+use serde_json::Value;
 
 #[pyclass]
 struct Database {
@@ -45,6 +46,73 @@ fn pydict2bson_document(dict: &PyDict, py: pyo3::prelude::Python<'_>) -> bson::D
     }
     return map;
 }
+
+
+fn bson_array2pylist<'a>(array: &bson::Array, py: pyo3::prelude::Python<'a>) -> &'a PyList {
+    let mut list = PyList::empty(py);
+    
+    for v in array {
+        match v {
+            bson::Bson::String(s) => {
+                list.append(s);
+            }
+            bson::Bson::Double(d) => {
+                list.append(d);
+            }
+            bson::Bson::Int64(i) => {
+                list.append(i);
+            }
+            bson::Bson::Boolean(b) => {
+                list.append(b);
+            }
+            bson::Bson::Document(doc) => {
+                let mut py_dict_nested = bson_document2pydict(doc, py);
+                list.append(py_dict_nested);
+            }
+            bson::Bson::Array(arr) => {
+                let mut py_list_nested = bson_array2pylist(arr, py);
+                list.append(py_list_nested);
+            }
+            _ => {
+                // return Err(0);
+            }
+        }
+    }
+
+    return list;
+}
+
+
+fn bson_document2pydict<'a>(dict: &bson::Document, py: pyo3::prelude::Python<'a>) -> &'a PyDict {
+    let mut py_dict = PyDict::new(py);
+    for (key, value) in dict {
+        if bson::Bson::Null == *value {
+            py_dict.set_item(key, py.None()).unwrap();
+        }
+        else if let bson::Bson::Int32(val) = value {
+            py_dict.set_item(key, val).unwrap();
+        }
+        else if let bson::Bson::Int64(val) = value {
+            py_dict.set_item(key, val).unwrap();
+        }
+        else if let bson::Bson::Double(val) = value {
+            py_dict.set_item(key, val).unwrap();
+        }
+        else if let bson::Bson::String(val_str) = value {
+            py_dict.set_item(key, val_str).unwrap();
+        }
+        else if let bson::Bson::Document(doc) = value {
+            let mut py_dict_nested = bson_document2pydict(doc, py);
+            py_dict.set_item(key, py_dict_nested).unwrap();
+        }
+        else if let bson::Bson::Array(arr) = value {
+            let py_list = bson_array2pylist(arr, py);
+            py_dict.set_item(key, py_list).unwrap();
+        }
+    }
+    return py_dict;
+}
+
 /*
 fn pylist2serde_json_vec(list: &PyList) -> Vec<serde_json::Value> {
 
@@ -123,10 +191,11 @@ impl Record {
         Ok(PyDateTime::from_timestamp(py, self.record.last_modified.timestamp() as f64, None).unwrap())
     }
 
-    /*#[getter]
-    fn get_data(&self) -> PyResult<PyDict> {
-        Ok(self.record.data.clone())
-    }*/
+    #[getter]
+    fn get_data<'a>(&self, py: pyo3::prelude::Python<'a>) -> PyResult<&'a PyDict> {
+        let r = bson_document2pydict(&self.record.data, py);
+        Ok(r)
+    }
 }
 
 #[pymethods]
@@ -150,7 +219,7 @@ impl Collection {
             let tuple = (v, 1);
             f.call1( tuple ).unwrap();  
             Ok(())
-        }) );
+        }) ).unwrap();
         
         
         Ok(())
