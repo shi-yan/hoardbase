@@ -1,10 +1,26 @@
-- uses: actions-rs/toolchain@v1
-  with:
-    profile: minimal
-    toolchain: stable
-    override: true
-- uses: messense/maturin-action@v1
-  with:
-    maturin-version: latest
-    command: build
-    args: --release -m python/Cargo.toml
+name: Py
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        toolchain: stable
+        override: true
+    - uses: messense/maturin-action@v1
+      with:
+        maturin-version: latest
+        command: build
+        args: --release -m python/Cargo.toml
