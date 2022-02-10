@@ -23,4 +23,4 @@ jobs:
       with:
         maturin-version: latest
         command: build
-        args: --release -m python
+        args: --release -m /home/runner/work/hoardbase/hoardbase/python/Cargo.toml
