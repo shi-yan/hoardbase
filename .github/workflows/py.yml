@@ -55,17 +55,24 @@ jobs:
       - name: wheels Linux ${{ matrix.vers }}
         if: runner.os == 'Linux'
         uses: joerick/cibuildwheel@v1.10.0
+        with:
+          package-dir: "./python"
         env:
           CIBW_ARCHS_LINUX: ${{ matrix.vers }}
 
       - name: wheels Macos ${{ matrix.vers }}
         if: runner.os == 'Macos'
         uses: joerick/cibuildwheel@v1.10.0
+        with:
+          package-dir: "./python"
+        package-dir: "./python"
         env:
           CIBW_ARCHS_MACOS: ${{ matrix.vers }}
 
       - name: wheels Windows ${{ matrix.vers }}
         if: runner.os == 'Windows'
         uses: joerick/cibuildwheel@v1.10.0
+        with:
+          package-dir: "./python"
         env:
           CIBW_ARCHS_WINDOWS: ${{ matrix.vers }}
