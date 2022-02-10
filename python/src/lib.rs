@@ -198,6 +198,39 @@ impl Record {
     }
 }
 
+#[pyclass]
+struct Index {
+    index: hoardbase::base::Index,
+}
+
+#[pymethods]
+impl Index {
+    #[getter]
+    fn get_seq(&self) -> PyResult<i64> {
+        Ok(self.index.seq)
+    }
+
+    #[getter]
+    fn get_name(&self) -> PyResult<String> {
+        Ok(self.index.name.clone())
+    }
+
+    #[getter]
+    fn get_is_unique(&self) -> PyResult<bool> {
+        Ok(self.index.is_unique)
+    }
+
+    #[getter]
+    fn get_index_type(&self) -> PyResult<String> {
+        Ok(self.index.index_type.clone())
+    }
+
+    #[getter]
+    fn get_is_partial(&self) -> PyResult<bool> {
+        Ok(self.index.is_partial)
+    }
+}
+
 #[pymethods]
 impl Collection {
     pub fn insert_one(&self, py: pyo3::prelude::Python<'_>, document: &PyDict) -> PyResult<Record> {
@@ -278,28 +311,55 @@ impl Collection {
             Ok(None)
         }
     }
-/*
-    fn get_indexes(&mut self) -> PyResult<Vec<Index>> {
+
+    fn get_indexes(&mut self,py: pyo3::prelude::Python<'_>) -> PyResult<Vec<Index>> {
         let indexes = self.db.lock().unwrap().collection(&self.name).unwrap().get_indexes().unwrap();
-        Ok(indexes)
-    }
-*/
-/*    fn insert_many(&mut self, documents: &Vec<bson::Document>) -> std::result::Result<(), String> {
-    }
-
-    fn reindex(&mut self) -> std::result::Result<(), String> {
+        let mut r = Vec::new();        
+        for index in indexes {
+            r.push(Index { index: index.clone() });
+        }
+        Ok(r)
     }
 
-    fn replace_one(&mut self, query: &bson::Document, replacement: &bson::Document, skip: i64) -> std::result::Result<Option<Record>, String> {
+    fn insert_many(&mut self,py: pyo3::prelude::Python<'_>, documents: &PyList) -> PyResult<()> {
+        let mut documents_bson = Vec::new();
+        for document in documents {
+            let document = document.downcast::<PyDict>().unwrap();
+            documents_bson.push(pydict2bson_document(document, py));
+        }
+        self.db.lock().unwrap().collection(&self.name).unwrap().insert_many(&documents_bson).unwrap();
+        Ok(())
     }
 
-    fn update_one(&mut self, query: &bson::Document, update: &bson::Document, skip: i64, upsert: bool) -> std::result::Result<Option<Record>, String> {
+    fn reindex(&mut self) -> PyResult<()> {
+        self.db.lock().unwrap().collection(&self.name).unwrap().reindex().unwrap();
+        Ok(())
     }
 
-    fn update_many(&mut self, query: &bson::Document, update: &bson::Document, limit: i64, skip: i64, upsert: bool) -> Result<i64, String> {
+    fn replace_one(&mut self,py: pyo3::prelude::Python<'_>, query: &PyDict, replacement: &PyDict, skip: i64) -> PyResult<Option<Record>> {
+        let r = self.db.lock().unwrap().collection(&self.name).unwrap().replace_one(&pydict2bson_document(query, py), &pydict2bson_document(replacement, py), skip).unwrap();
+        if let Some(rr) = r {
+            Ok(Some(Record { record: rr}))
+        }
+        else {
+            Ok(None)
+        }
     }
 
-    */
+    fn update_one(&mut self,py: pyo3::prelude::Python<'_>, query: &PyDict, update: &PyDict, skip: i64, upsert: bool) -> PyResult<Option<Record>> {
+        let r = self.db.lock().unwrap().collection(&self.name).unwrap().update_one(&pydict2bson_document(query, py), &pydict2bson_document(update, py), skip, upsert).unwrap();
+        if let Some(rr) = r {
+            Ok(Some(Record { record: rr}))
+        }
+        else {
+            Ok(None)
+        }
+    }
+
+    fn update_many(&mut self,py: pyo3::prelude::Python<'_>,query: &PyDict, update: &PyDict, limit: i64, skip: i64, upsert: bool) -> PyResult<i64> {
+        let c = self.db.lock().unwrap().collection(&self.name).unwrap().update_many(&pydict2bson_document(query, py), &pydict2bson_document(update, py), limit, skip, upsert).unwrap();
+        Ok(c)
+    }
 }
 
 /// A Python module implemented in Rust. The name of this function must match
