@@ -18,10 +18,7 @@ jobs:
       - name: Hello world
         run: |
           echo "Hello World"
-          ls /home/runner/work
-          ls /home/runner/work/hoardbase
-          ls /home/runner/work/hoardbase/hoardbase
-          ls /home/runner/work/hoardbase/hoardbase/python
+          ls -R /home/runner/work
       - uses: actions-rs/toolchain@v1
         with:
           profile: minimal
