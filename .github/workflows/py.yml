@@ -15,6 +15,7 @@ jobs:
     env:
       working-directory: ./python
     steps:
+      - uses: actions/checkout@v2
       - name: Hello world
         run: |
           echo "Hello World"
