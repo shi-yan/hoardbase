@@ -15,6 +15,11 @@ jobs:
     env:
       working-directory: ./python
     steps:
+    run: |
+          echo '::warning:: this is a warning'
+          ls /home/runner/work/hoardbase/hoardbase -la
+          ls /home/runner/work/hoardbase -la
+          ls /home/runner/work/hoardbase/hoardbase/python -la
     - uses: actions-rs/toolchain@v1
       with:
         profile: minimal
