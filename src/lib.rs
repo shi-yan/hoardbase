@@ -19,7 +19,7 @@
 //!     let mut ccol: CollectionConfig = CollectionConfig::default("test");
 //!     ccol.hash_document(true);
 //!     ccol.log_last_modified(true);
-//!     let mut collection = db.create_collection("test_collect", &ccol).unwrap();
+//!     let mut collection = db.create_collection("test", &ccol).unwrap();
 //!     collection.create_index(bson::to_bson(&json!({"age": 1})).unwrap().as_document().unwrap(), false).unwrap();
 //!     collection.insert_one( bson::to_bson(&json!({ "kind": "apples", "qty": 5 })).unwrap().as_document().unwrap()).unwrap();
 //! }

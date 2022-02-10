@@ -82,9 +82,9 @@ fn main() {
     let mut ccol: CollectionConfig = CollectionConfig::default("test");
     ccol.hash_document(true);
     ccol.log_last_modified(true);
-    let mut collection = db.create_collection("test_collect", &ccol).unwrap();
-    collection.create_index(&json!({"age": 1}), false).unwrap();
-    collection.insert_one(&json!({ "kind": "apples", "qty": 5 })).unwrap();
+    let mut collection = db.create_collection("test", &ccol).unwrap();
+    collection.create_index(bson::to_bson(&json!({"age": 1})).unwrap().as_document().unwrap(), false).unwrap();
+    collection.insert_one( bson::to_bson(&json!({ "kind": "apples", "qty": 5 })).unwrap().as_document().unwrap()).unwrap();
 }
 ```
 
@@ -105,6 +105,15 @@ let r = col.insertOne({ data: "test", age: 23, test_arr: [1, 2, 3], test_obj: { 
 ```
 
 ## Unsupported Mongodb Features
+
+The following mongodb functions are not implemented, because I couldn't find a good way to return the modified document after an update with sqlite in a single SQL statement.
+* find_one_and_replace
+* find_one_and_update
+* find_and_modify
+
+Aggregation is also not implemented, it is not a feature I use very much. I will look into it later.
+
+Transaction implementation is also different from mongodb. Hoardbase's transaction can't return records. It is mainly used for creating related documents.
 
 ## Internals
 The key mechanism for storing and querying json data using sqlite is serializing json documents into the blob type. Currently [`bson`] is used 

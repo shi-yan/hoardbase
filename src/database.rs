@@ -606,6 +606,7 @@ impl Database {
     /// Obtain an existing collection given a name. This function assemble a [`Collection`] object by combining
     /// the collection's configuration and the [`Database::internal`] rusqlite connection
     pub fn collection<'a>(&'a mut self, collection_name: &str) -> Result<Collection<'a>, &str> {
+        println!("{:?}", self.collections);
         if self.collections.contains_key(collection_name) {
             let (collection_name, collection_config) = self.collections.get(collection_name).unwrap();
             Ok(Collection::<'a> {
