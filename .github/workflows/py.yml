@@ -65,7 +65,6 @@ jobs:
         uses: joerick/cibuildwheel@v1.10.0
         with:
           package-dir: "./python"
-        package-dir: "./python"
         env:
           CIBW_ARCHS_MACOS: ${{ matrix.vers }}
 
