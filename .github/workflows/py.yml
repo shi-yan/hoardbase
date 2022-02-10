@@ -4,7 +4,7 @@ on:
     branches: [ master ]
   pull_request:
     branches: [ master ]
-    
+
 jobs:
   build_wheels:
     name: Build wheels on ${{ matrix.os }}  - ${{ matrix.vers }}
@@ -53,21 +53,18 @@ jobs:
           platforms: all
 
       - name: wheels Linux ${{ matrix.vers }}
-        working-directory: ${{env.working-directory}}
         if: runner.os == 'Linux'
         uses: joerick/cibuildwheel@v1.10.0
         env:
           CIBW_ARCHS_LINUX: ${{ matrix.vers }}
 
       - name: wheels Macos ${{ matrix.vers }}
-        working-directory: ${{env.working-directory}}
         if: runner.os == 'Macos'
         uses: joerick/cibuildwheel@v1.10.0
         env:
           CIBW_ARCHS_MACOS: ${{ matrix.vers }}
 
       - name: wheels Windows ${{ matrix.vers }}
-        working-directory: ${{env.working-directory}}
         if: runner.os == 'Windows'
         uses: joerick/cibuildwheel@v1.10.0
         env:
