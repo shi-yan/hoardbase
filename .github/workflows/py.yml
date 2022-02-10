@@ -15,7 +15,7 @@ jobs:
     env:
       working-directory: ./python
     steps:
-    run: |
+      run: |
           echo '::warning:: this is a warning'
           ls /home/runner/work/hoardbase/hoardbase -la
           ls /home/runner/work/hoardbase -la
