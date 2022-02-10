@@ -1,0 +1,10 @@
+- uses: actions-rs/toolchain@v1
+  with:
+    profile: minimal
+    toolchain: stable
+    override: true
+- uses: messense/maturin-action@v1
+  with:
+    maturin-version: latest
+    command: build
+    args: --release -m python/Cargo.toml
