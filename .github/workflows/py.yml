@@ -1,32 +1,72 @@
-name: Py
-
+name: CI
 on:
   push:
-    branches: [ master ]
-  pull_request:
-    branches: [ master ]
-
-env:
-  CARGO_TERM_COLOR: always
-
+    tags:
+      - "*"
 jobs:
-  build:
-    runs-on: ubuntu-latest
+  build_wheels:
+    name: Build wheels on ${{ matrix.os }}  - ${{ matrix.vers }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - vers: i686
+            os: ubuntu-20.04
+          - vers: aarch64
+            os: ubuntu-20.04
+          - vers: auto64
+            os: ubuntu-20.04
+          - vers: arm64
+            os: macos-10.15
+          - vers: auto64
+            os: macos-10.15
+          - vers: auto64
+            os: windows-2019
+
     env:
-      working-directory: ./python
+      SCCACHE_VERSION: 0.2.13
+      CIBW_BEFORE_ALL_LINUX: "curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain stable -y && yum install -y openssl-devel"
+      CIBW_BUILD_VERBOSITY: "1" # Make some more noise so that travis doesn't stall
+      CIBW_ENVIRONMENT: 'PATH="$PATH:$HOME/.cargo/bin"'
+      CIBW_SKIP: "cp27-* cp34-* cp35-* pp* *-win32"
+      working-directory: /home/runner/work/hoardbase/hoardbase/python
+
     steps:
       - uses: actions/checkout@v2
-      - name: Hello world
-        run: |
-          echo "Hello World"
-          ls -R /home/runner/work
-      - uses: actions-rs/toolchain@v1
+
+      - uses: actions/setup-python@v2
+        name: Install Python
         with:
-          profile: minimal
-          toolchain: stable
-          override: true
-      - uses: messense/maturin-action@v1
+          python-version: "3.8"
+
+      - name: Install Visual C++ for Python 2.7
+        if: runner.os == 'Windows'
+        run: choco install vcpython27 -f -y
+
+      - name: Set up QEMU
+        if: runner.os == 'Linux'
+        uses: docker/setup-qemu-action@v1
         with:
-          maturin-version: latest
-          command: build
-          args: --release -m /home/runner/work/hoardbase/hoardbase/python/Cargo.toml
+          platforms: all
+
+      - name: wheels Linux ${{ matrix.vers }}
+        working-directory: ${{env.working-directory}}
+        if: runner.os == 'Linux'
+        uses: joerick/cibuildwheel@v1.10.0
+        env:
+          CIBW_ARCHS_LINUX: ${{ matrix.vers }}
+
+      - name: wheels Macos ${{ matrix.vers }}
+        working-directory: ${{env.working-directory}}
+        if: runner.os == 'Macos'
+        uses: joerick/cibuildwheel@v1.10.0
+        env:
+          CIBW_ARCHS_MACOS: ${{ matrix.vers }}
+
+      - name: wheels Windows ${{ matrix.vers }}
+        working-directory: ${{env.working-directory}}
+        if: runner.os == 'Windows'
+        uses: joerick/cibuildwheel@v1.10.0
+        env:
+          CIBW_ARCHS_WINDOWS: ${{ matrix.vers }}
